@@ -3495,12 +3495,13 @@ Mtgdecks.net &copy;2009-2025. This site provides accurate and independent inform
     assert_eq!(page_html.chars().nth(1), Some('t'));
     assert_eq!(page_html.chars().nth(8), Some('s'));
 
-    let html_decks: Vec<&str> = page_html.split(r#"<tr style="" "#).collect();
+    let mut html_decks: Vec<&str> = page_html.split(r#"<tr style="" "#).collect();
+    html_decks.remove(0);
     let mut has_white_data: Vec<bool> = Vec::new();
     for html_deck in &html_decks {
-        println!("{:?}\n------------------------------------------", html_deck);
         let html_mana_symbols: Vec<&str> =
             html_deck.split(r#"<span class=ms ms-cost ms-"#).collect();
+        println!("----------------------{:?}", html_mana_symbols);
         let mut has_white_mana: bool = false;
         for html_mana_symbol in html_mana_symbols {
             if let Some('w') = html_mana_symbol.chars().nth(0) {
