@@ -3481,16 +3481,36 @@ Mtgdecks.net &copy;2009-2025. This site provides accurate and independent inform
 <script type="text/javascript" src="/pagespeed_static/js_defer.I4cHjq6EEP.js"></script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'925695da9bc1ed9b',t:'MTc0MjgyMzY3OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon='{"rayId":"925695da9bc1ed9b","serverTiming":{"name":{"cfExtPri":true,"cfL4":true,"cfSpeedBrain":true,"cfCacheStatus":true}},"version":"2025.1.0","token":"c7df624a15514f6ea5aa2234098afc9a"}' crossorigin="anonymous"></script>
 </body>
 </html>"##;
-    if let Some(string) = page_html.find(
+    if let (Some(first_index), Some(second_index)) = (page_html.find(
         r#"<th class="hidden-xs">Archetype</th>
 <th class="hidden-xs">Spiciness</th>"#
-    ) {
-        page_html = &page_html[string..];
+    ),
+    page_html.find(
+        r#"<h2 id="event-archetypes">Tournament Archetype breakdown</h2>"#
+    )) {
+        page_html = &page_html[first_index..second_index];
     }
-    let html_decks: Vec<String> = 
-    while true {
 
+    assert_eq!(page_html.chars().nth(0), Some('<'));
+    assert_eq!(page_html.chars().nth(1), Some('t'));
+    assert_eq!(page_html.chars().nth(8), Some('s'));
+
+    let html_decks: Vec<&str> = page_html.split(r#"<tr style="" "#).collect();
+    let mut has_white_data: Vec<bool> = Vec::new();
+    for html_deck in &html_decks {
+        println!("{:?}\n------------------------------------------", html_deck);
+        let html_mana_symbols: Vec<&str> =
+            html_deck.split(r#"<span class=ms ms-cost ms-"#).collect();
+        let mut has_white_mana: bool = false;
+        for html_mana_symbol in html_mana_symbols {
+            if let Some('w') = html_mana_symbol.chars().nth(0) {
+                has_white_mana = true;
+            }
+        }
+        has_white_data.push(has_white_mana);
     }
+    println!("{:?}", has_white_data);
+    return;
     let lands_count: Vec<u8> = Vec::from([
         20, 17, 19, 19, 18, 19, 20, 18, 19, 14,
         18, 17, 18, 17, 20, 18, 16, 18, 17, 15,
