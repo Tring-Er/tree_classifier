@@ -3490,34 +3490,55 @@ Mtgdecks.net &copy;2009-2025. This site provides accurate and independent inform
     )) {
         page_html = &page_html[first_index..second_index];
     }
-
-    assert_eq!(page_html.chars().nth(0), Some('<'));
-    assert_eq!(page_html.chars().nth(1), Some('t'));
-    assert_eq!(page_html.chars().nth(8), Some('s'));
-
-    let mut html_decks: Vec<&str> = page_html.split(r#"<tr style="" "#).collect();
-    html_decks.remove(0);
+    let html_decks: Vec<&str> =
+        page_html.split(r#"<tr style="" "#).collect();
     let mut has_white_data: Vec<bool> = Vec::new();
-    for html_deck in &html_decks {
+    let mut has_blue_data: Vec<bool> = Vec::new();
+    let mut has_black_data: Vec<bool> = Vec::new();
+    let mut has_red_data: Vec<bool> = Vec::new();
+    let mut has_green_data: Vec<bool> = Vec::new();
+    let mut lands_count: Vec<u8> = Vec::new();
+    let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
+    for html_deck_index in 1..html_decks.len() {
+        deck_position_less_than_9_data.push(html_deck_index < 9);
         let html_mana_symbols: Vec<&str> =
-            html_deck.split(r#"<span class=ms ms-cost ms-"#).collect();
-        println!("----------------------{:?}", html_mana_symbols);
+            html_decks[html_deck_index]
+            .split(r#"<span class="ms ms-cost ms-"#).collect();
         let mut has_white_mana: bool = false;
+        let mut has_blue_mana: bool = false;
+        let mut has_black_mana: bool = false;
+        let mut has_red_mana: bool = false;
+        let mut has_green_mana: bool = false;
         for html_mana_symbol in html_mana_symbols {
-            if let Some('w') = html_mana_symbol.chars().nth(0) {
-                has_white_mana = true;
+            if let Some(char) = html_mana_symbol.chars().nth(0) {
+                if char == 'w' {
+                    has_white_mana = true;
+                } else if char == 'u' {
+                    has_blue_mana = true;
+                } else if char == 'b' {
+                    has_black_mana = true;
+                } else if char == 'r' {
+                    has_red_mana = true;
+                } else if char == 'g' {
+                    has_green_mana = true;
+                }
             }
         }
         has_white_data.push(has_white_mana);
+        has_blue_data.push(has_blue_mana);
+        has_black_data.push(has_black_mana);
+        has_red_data.push(has_red_mana);
+        has_green_data.push(has_green_mana);
+        lands_count.push(0);
     }
-    println!("{:?}", has_white_data);
-    return;
+    /*
     let lands_count: Vec<u8> = Vec::from([
         20, 17, 19, 19, 18, 19, 20, 18, 19, 14,
         18, 17, 18, 17, 20, 18, 16, 18, 17, 15,
         18, 17, 17, 17, 20, 16, 18, 13, 17, 17,
         19, 15,
     ]);
+    */
     let mut unique_lands_values: Vec<u8> = Vec::new();
     for land_amount in &lands_count {
         let mut contains_value: bool = false;
@@ -3540,37 +3561,7 @@ Mtgdecks.net &copy;2009-2025. This site provides accurate and independent inform
         }
         lands_count_data.push(unique_value_data);
     }
-    let has_white_data: Vec<bool> = Vec::from([
-        false, false, true, false, false, false, false, false, true, false,
-        false, false, false, true, false, false, false, false, false, false,
-        false, false, true, false, false, false, false, false, false, false,
-        false, false,
-    ]);
-    let has_blue_data: Vec<bool> = Vec::from([
-        false, true, false, true, true, true, true, true, false, true,
-        true, false, true, false, false, true, true, true, false, true,
-        true, false, false, false, false, true, true, false, false, false,
-        true, false,
-    ]);
-    let has_black_data: Vec<bool> = Vec::from([
-        true, false, false, true, false, true, true, true, true, true,
-        false, false, true, false, true, false, true, true, false, false,
-        true, false, false, true, true, true, true, false, false, false,
-        true, true,
-    ]);
-    let has_red_data: Vec<bool> = Vec::from([
-        true, false, false, true, true, false, true, false, false, true,
-        false, true, false, false, true, false, true, false, true, false,
-        false, true, false, false, true, true, false, true, false, true,
-        true, true,
-    ]);
-    let has_green_data: Vec<bool> = Vec::from([
-        true, false, false, false, false, false, false, false, true, true,
-        false, false, false, false, true, false, true, false, false, false,
-        false, true, true, true, true, true, false, true, true, true,
-        false, true,
-    ]);
-    let deck_position_less_than_4_data: Vec<bool> = Vec::from([
+    let deck_position_less_than_8_data: Vec<bool> = Vec::from([
         true, true, true, true, true, true, true, true, false, false,
         false, false, false, false, false, false, false, false, false, false,
         false, false, false, false, false, false, false, false, false, false,
@@ -3585,16 +3576,17 @@ Mtgdecks.net &copy;2009-2025. This site provides accurate and independent inform
     ]);
     data_array_map.append(&mut lands_count_data);
     let generated_nodes: Node = generate_nodes(
-        &Vec::from_iter(0..deck_position_less_than_4_data.len()),
+        &Vec::from_iter(0..deck_position_less_than_8_data.len()),
         &data_array_map,
-        &Vec::from(deck_position_less_than_4_data)
+        &Vec::from(deck_position_less_than_8_data)
     );
     println!("Node: {:?}", generated_nodes);
+    println!("0:W, 1:U, 2:B, 3:R, 4:G");
     let prediction: bool = evaluate_data(
         generated_nodes,
         Vec::from([
             false,
-            true,
+            false,
             true,
             true,
             false,
