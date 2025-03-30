@@ -4,5 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-reqwest = {version = "0.11", features = ["blocking", "json"]}
-tokyo = {version = "1", features = ["full"]}
+reqwest = {version = "0.11", default-features = false, features = ["blocking", "json", "rustls-tls"]}
