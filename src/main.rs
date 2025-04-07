@@ -209,19 +209,20 @@ fn generate_nodes(
 
 fn main() {
     let mut page_html: &str = "";
-    let client: reqwest::blocking::Client = reqwest::blocking::Client::new();
+    let client: reqwest::blocking::Client = match reqwest::blocking::ClientBuilder::new().build() {
+        Ok(client_settings) => client_settings,
+        _ => panic!("Client settings inccorrect"),
+    };
     let response: Result<reqwest::blocking::Response, reqwest::Error> = client
-        //.get("https://mtgdecks.net/Pauper/tropical-pauper-227-tournament-188694
-//")
 .get("https://mtgdecks.net/Pauper/tropical-pauper-227-tournament-188694")
         .header("Host", "mtgdecks.net")
         .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0")
         .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
         .header("Accept-Language", "en-Us,en;q=0.5")
-        //.header("Accept-Encoding", "gzip, deflate, br, zstd")
+        .header("Accept-Encoding", "gzip, deflate, br, zstd")
         .header("Sec-GPC", "1")
         .header("Connection", "keep-alive")
-        .header("Cookie", "PHPSESSID=htpkouocj63k23p8ogevs0pqeg; cf_clearance=Xccz50AHv.aIoIdrsc18joymj6Qu2Y9lFrk2tN9EwYM-1743330756-1.2.1.1-OBtEH2wtqshX_Xxh.iPKgoOe3oLo_6ZQnmGBSBOAg3cASS_l_b9_bVL2j9D_xrQl6lrfHqTAnRdMIriJO368D9yRpY8rvkRSLI3NtZ.NfWdpJdZr_I0iDyXDL1Wpt0HC8cLAPn5DU_VqlyrLKRbiA1ntSwCcxIJVYw4n17O5MEpuBy3sDO.C.h2snA.hQ2wd_8z.p6jMQteCWSkpp.3bxhBCu8iV29SKZ3JyI9gcwdqrz45GcyEN4bNptYj8GXgpfCrV4xQytXrz3j.Yb9v7RVrJkvnXZKubDQ3wQAEBRqhKIxroz1o2bVIPKRYrtq8O5qMkvRMKD4bZQZb.XLDqT9l989S24gJTHLgNkGEhAOc")
+        .header("Cookie", "cf_clearance=FlMz9EUIaWL7JWS893cDr8cwHY1xQ2165agwfpE1ofQ-1743974560-1.2.1.1-__2Ftpa28IPnHbrjZC4xpUufP9i4_KCw.JZCrAoHIusVM65PS4WskZ_EOUFjfBhjXP1yy_NxvHqGfzxHV_7ko7RadoKn7HX.OgUXb_mnXLcCcUeFs9RptsTJL8LbGS.T6NEggZfbC7gdFPZfErdCck3RENTspnR.a6xLw1O.UDtnb.1quYs5mdNGqMCswDV.a7kW3ZcvTBAKWOgm.qWss2TrvzXpDGP.5mA8LP_ShNO0bMHs94a09P9OQT5e4LvZwocm9cBruoYvu55jLTaFDE0G1sudiyJRg2GzrwKD7ek0Net9_xiaX6w6VCiqCeyiQyLR9o40C4TnQqyAs5nmm4hQHqI5c1ApN6.ss_jsPs8; PHPSESSID=h7q2cidav2jtk3m2npi8jo1pr8")
         .header("Upgrade-Insecure-Requests", "1")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
@@ -233,6 +234,7 @@ fn main() {
     if let Ok(resp) = response {
         println!("Here");
         text = resp.text().expect("failed");
+        println!("{:?}", text);
         page_html = &text;
     }
     if let (Some(first_index), Some(second_index)) = (page_html.find(
