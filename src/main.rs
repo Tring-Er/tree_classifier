@@ -1,41 +1,3 @@
-/*
-https://mtgdecks.net/Pauper/tropical-pauper-227-tournament-188694
-|ID|LANDS|WHITE|BLUE|BLACK|RED|GREEN|POSITION|
-|--|-----|-----|----|-----|---|-----|--------|
-|0 |20   |no   |no  |yes  |yes|yes  |1       |
-|1 |17   |no   |yes |no   |no |no   |2       |
-|2 |19   |yes  |no  |no   |no |no   |3       |
-|3 |19   |no   |yes |yes  |yes|no   |4       |
-|4 |18   |no   |yes |no   |yes|no   |5       |
-|5 |19   |no   |yes |yes  |no |no   |6       |
-|6 |20   |no   |yes |yes  |yes|no   |7       |
-|7 |18   |no   |yes |yes  |no |no   |8       |
-|8 |19   |yes  |no  |yes  |no |yes  |9       |
-|9 |14   |no   |yes |yes  |yes|yes  |10      |
-|10|18   |no   |yes |no   |no |no   |11      |
-|11|17   |no   |no  |no   |yes|no   |12      |
-|12|18   |no   |yes |yes  |no |no   |13      |
-|13|17   |yes  |no  |no   |no |no   |14      |
-|14|20   |no   |no  |yes  |yes|yes  |15      |
-|15|18   |no   |yes |no   |no |no   |16      |
-|16|16   |no   |yes |yes  |yes|yes  |17      |
-|17|18   |no   |yes |yes  |no |no   |18      |
-|18|17   |no   |no  |no   |yes|no   |19      |
-|19|15   |no   |yes |no   |no |no   |20      |
-|20|18   |no   |yes |yes  |no |no   |21      |
-|21|17   |no   |no  |no   |yes|yes  |22      |
-|22|17   |yes  |no  |no   |no |yes  |23      |
-|23|17   |no   |no  |yes  |no |yes  |24      |
-|24|20   |no   |no  |yes  |yes|yes  |25      |
-|25|16   |no   |yes |yes  |yes|yes  |26      |
-|26|18   |no   |yes |yes  |no |no   |27      |
-|27|13   |no   |no  |no   |yes|yes  |28      |
-|28|17   |no   |no  |no   |no |yes  |29      |
-|29|17   |no   |no  |no   |yes|yes  |30      |
-|30|19   |no   |yes |yes  |yes|no   |31      |
-|31|15   |no   |no  |yes  |yes|yes  |32      |
- */
-
 use reqwest;
 
 #[derive(Debug)]
@@ -214,40 +176,40 @@ fn main() {
         _ => panic!("Client settings inccorrect"),
     };
     let response: Result<reqwest::blocking::Response, reqwest::Error> = client
-.get("https://mtgdecks.net/Pauper/tropical-pauper-227-tournament-188694")
-        .header("Host", "mtgdecks.net")
-        .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0")
+.get("https://www.mtgo.com/decklist/pauper-league-2025-04-078957")
+        .header("Host", "www.mtgo.com")
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
         .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
         .header("Accept-Language", "en-Us,en;q=0.5")
         .header("Accept-Encoding", "gzip, deflate, br, zstd")
+        .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
         .header("Sec-GPC", "1")
         .header("Connection", "keep-alive")
-        .header("Cookie", "cf_clearance=FlMz9EUIaWL7JWS893cDr8cwHY1xQ2165agwfpE1ofQ-1743974560-1.2.1.1-__2Ftpa28IPnHbrjZC4xpUufP9i4_KCw.JZCrAoHIusVM65PS4WskZ_EOUFjfBhjXP1yy_NxvHqGfzxHV_7ko7RadoKn7HX.OgUXb_mnXLcCcUeFs9RptsTJL8LbGS.T6NEggZfbC7gdFPZfErdCck3RENTspnR.a6xLw1O.UDtnb.1quYs5mdNGqMCswDV.a7kW3ZcvTBAKWOgm.qWss2TrvzXpDGP.5mA8LP_ShNO0bMHs94a09P9OQT5e4LvZwocm9cBruoYvu55jLTaFDE0G1sudiyJRg2GzrwKD7ek0Net9_xiaX6w6VCiqCeyiQyLR9o40C4TnQqyAs5nmm4hQHqI5c1ApN6.ss_jsPs8; PHPSESSID=h7q2cidav2jtk3m2npi8jo1pr8")
+        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=false; JSESSIONID=458D1ADE527EA7013B2A043582A69B32.lvs-foyert1-3409")
         .header("Upgrade-Insecure-Requests", "1")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
-        .header("Sec-Fetch-Site", "cross-site")
+        .header("Sec-Fetch-Site", "same-origin")
+        .header("Sec-Fetch-User", "?1")
         .header("Priority", "u=0, i")
-        .header("TE", "trailers")
         .send();
     let text;
     if let Ok(resp) = response {
-        println!("Here");
         text = resp.text().expect("failed");
-        println!("{:?}", text);
         page_html = &text;
     }
     if let (Some(first_index), Some(second_index)) = (page_html.find(
-        r#"<th class="hidden-xs">Archetype</th>
-<th class="hidden-xs">Spiciness</th>"#
+        r#"window.MTGO.decklists.data = "#
     ),
     page_html.find(
-        r#"<h2 id="event-archetypes">Tournament Archetype breakdown</h2>"#
+        r#"window.MTGO.decklists.type = "#
     )) {
-        page_html = &page_html[first_index..second_index];
+        page_html = &page_html[first_index + 29..second_index - 6];
     }
-    let html_decks: Vec<&str> =
-        page_html.split(r#"<tr style="" "#).collect();
+    let mut html_decks: Vec<&str> =
+        page_html.split(r#""loginid":""#).collect();
+    html_decks = html_decks[1..].to_vec();
+    println!("Html decks are: {:?}", html_decks.len());
     let mut has_white_data: Vec<bool> = Vec::new();
     let mut has_blue_data: Vec<bool> = Vec::new();
     let mut has_black_data: Vec<bool> = Vec::new();
@@ -255,29 +217,32 @@ fn main() {
     let mut has_green_data: Vec<bool> = Vec::new();
     let mut lands_count: Vec<u8> = Vec::new();
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
-    for html_deck_index in 1..html_decks.len() {
-        deck_position_less_than_9_data.push(html_deck_index < 9);
-        let html_mana_symbols: Vec<&str> =
+    let random_scoring: [u8; 7] = [1, 1, 2, 5, 8, 13, 21];
+    for html_deck_index in 0..html_decks.len() {
+        deck_position_less_than_9_data.push(random_scoring[html_deck_index % 7] < 8);
+        let html_cards: Vec<&str> =
             html_decks[html_deck_index]
-            .split(r#"<span class="ms ms-cost ms-"#).collect();
+            .split(r#""docid":""#).collect();
         let mut has_white_mana: bool = false;
         let mut has_blue_mana: bool = false;
         let mut has_black_mana: bool = false;
         let mut has_red_mana: bool = false;
         let mut has_green_mana: bool = false;
-        for html_mana_symbol in html_mana_symbols {
-            if let Some(char) = html_mana_symbol.chars().nth(0) {
-                if char == 'w' {
-                    has_white_mana = true;
-                } else if char == 'u' {
-                    has_blue_mana = true;
-                } else if char == 'b' {
-                    has_black_mana = true;
-                } else if char == 'r' {
-                    has_red_mana = true;
-                } else if char == 'g' {
-                    has_green_mana = true;
-                }
+        for html_card in html_cards {
+            if html_card.contains("COLOR_WHITE") {
+                has_white_mana = true;
+            }
+            if html_card.contains("COLOR_BLUE") {
+                has_blue_mana = true;
+            }
+            if html_card.contains("COLOR_BLACK") {
+                has_black_mana = true;
+            }
+            if html_card.contains("COLOR_RED") {
+                has_red_mana = true;
+            }
+            if html_card.contains("COLOR_GREEN") {
+                has_green_mana = true;
             }
         }
         has_white_data.push(has_white_mana);
@@ -287,14 +252,6 @@ fn main() {
         has_green_data.push(has_green_mana);
         lands_count.push(0);
     }
-    /*
-    let lands_count: Vec<u8> = Vec::from([
-        20, 17, 19, 19, 18, 19, 20, 18, 19, 14,
-        18, 17, 18, 17, 20, 18, 16, 18, 17, 15,
-        18, 17, 17, 17, 20, 16, 18, 13, 17, 17,
-        19, 15,
-    ]);
-    */
     let mut unique_lands_values: Vec<u8> = Vec::new();
     for land_amount in &lands_count {
         let mut contains_value: bool = false;
@@ -308,7 +265,7 @@ fn main() {
             unique_lands_values.push(*land_amount);
         }
     }
-    println!("Unique lands values: {:?}", unique_lands_values);
+    println!("Unique lands values: {:?}\nW: {:?}\nU: {:?}\nB: {:?}\nR: {:?}\nG: {:?}", unique_lands_values, has_white_data, has_blue_data, has_black_data, has_red_data, has_green_data);
     let mut lands_count_data: Vec<Vec<bool>> = Vec::new();
     for unique_value in unique_lands_values {
         let mut unique_value_data: Vec<bool> = Vec::new();
@@ -317,12 +274,6 @@ fn main() {
         }
         lands_count_data.push(unique_value_data);
     }
-    let deck_position_less_than_8_data: Vec<bool> = Vec::from([
-        true, true, true, true, true, true, true, true, false, false,
-        false, false, false, false, false, false, false, false, false, false,
-        false, false, false, false, false, false, false, false, false, false,
-        false, false,
-    ]);
     let mut data_array_map: Vec<Vec<bool>> = Vec::from([
         has_white_data,
         has_blue_data,
@@ -332,9 +283,9 @@ fn main() {
     ]);
     data_array_map.append(&mut lands_count_data);
     let generated_nodes: Node = generate_nodes(
-        &Vec::from_iter(0..deck_position_less_than_8_data.len()),
+        &Vec::from_iter(0..deck_position_less_than_9_data.len()),
         &data_array_map,
-        &Vec::from(deck_position_less_than_8_data)
+        &Vec::from(deck_position_less_than_9_data)
     );
     println!("Node: {:?}", generated_nodes);
     println!("0:W, 1:U, 2:B, 3:R, 4:G");
