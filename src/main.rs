@@ -1,4 +1,5 @@
 use reqwest;
+use std;
 
 #[derive(Debug)]
 struct Node {
@@ -170,13 +171,25 @@ fn generate_nodes(
 
 
 fn main() {
-    let mut page_html: &str = "";
+    const N: usize = 1_000_000;
+    std::thread::Builder::new().stack_size(std::mem::size_of::<f64>() * 700 * N).spawn(|| {
+    let mut page_html: String = String::new();
+    let mut html_decks: Vec<String> = Vec::new();
+    let mut counter: usize = 1;
+    let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-league-2025-04-018957", "https://www.mtgo.com/decklist/pauper-league-2025-04-028957", "https://www.mtgo.com/decklist/pauper-league-2025-04-038957", "https://www.mtgo.com/decklist/pauper-league-2025-04-048957", "https://www.mtgo.com/decklist/pauper-league-2025-04-058957", "https://www.mtgo.com/decklist/pauper-league-2025-04-068957", "https://www.mtgo.com/decklist/pauper-league-2025-04-078957", "https://www.mtgo.com/decklist/pauper-league-2025-04-089081", "https://www.mtgo.com/decklist/pauper-league-2025-04-088957", "https://www.mtgo.com/decklist/pauper-league-2025-04-099081", "https://www.mtgo.com/decklist/pauper-league-2025-04-109081"]);
+    for urls_index_sets in [vec![0, 1, 2, 3], vec![4, 5, 6, 7], vec![8, 9, 10]] {
+        html_decks = Vec::new();
+    for url_index in urls_index_sets{
+        println!("Requesting n: {:?}", counter);
+        counter += 1;
+        std::thread::sleep(std::time::Duration::from_secs(10));
     let client: reqwest::blocking::Client = match reqwest::blocking::ClientBuilder::new().build() {
         Ok(client_settings) => client_settings,
         _ => panic!("Client settings inccorrect"),
     };
+    let url: &str = urls[url_index];
     let response: Result<reqwest::blocking::Response, reqwest::Error> = client
-.get("https://www.mtgo.com/decklist/pauper-league-2025-04-078957")
+.get(url)
         .header("Host", "www.mtgo.com")
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
         .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
@@ -185,7 +198,7 @@ fn main() {
         .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
         .header("Sec-GPC", "1")
         .header("Connection", "keep-alive")
-        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=false; JSESSIONID=458D1ADE527EA7013B2A043582A69B32.lvs-foyert1-3409")
+        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=false; JSESSIONID=5A422558FDAF799F2ED96724084A9FF1.lvs-foyert2-3409")
         .header("Upgrade-Insecure-Requests", "1")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
@@ -193,22 +206,25 @@ fn main() {
         .header("Sec-Fetch-User", "?1")
         .header("Priority", "u=0, i")
         .send();
-    let text;
     if let Ok(resp) = response {
-        text = resp.text().expect("failed");
-        page_html = &text;
+        let mut page_html: String = resp.text().expect("failed");
+
+        if let (Some(first_index), Some(second_index)) = (page_html.find(
+            r#"window.MTGO.decklists.data = "#
+        ),
+        page_html.find(
+            r#"window.MTGO.decklists.type = "#
+        )) {
+            page_html = page_html[first_index + 29..second_index - 6].to_string();
+        }
+        
+        let unfiltered_decks: Vec<&str> = page_html.split(r#""loginid":""#).collect();
+        println!("Request recived with: {:?} games", unfiltered_decks.len() - 1);
+        for deck_index in 1..unfiltered_decks.len() {
+            html_decks.push(unfiltered_decks[deck_index].to_string());
+        }
     }
-    if let (Some(first_index), Some(second_index)) = (page_html.find(
-        r#"window.MTGO.decklists.data = "#
-    ),
-    page_html.find(
-        r#"window.MTGO.decklists.type = "#
-    )) {
-        page_html = &page_html[first_index + 29..second_index - 6];
     }
-    let mut html_decks: Vec<&str> =
-        page_html.split(r#""loginid":""#).collect();
-    html_decks = html_decks[1..].to_vec();
     println!("Html decks are: {:?}", html_decks.len());
     let mut has_white_data: Vec<bool> = Vec::new();
     let mut has_blue_data: Vec<bool> = Vec::new();
@@ -289,6 +305,7 @@ fn main() {
     );
     println!("Node: {:?}", generated_nodes);
     println!("0:W, 1:U, 2:B, 3:R, 4:G");
+    
     let prediction: bool = evaluate_data(
         generated_nodes,
         Vec::from([
@@ -304,4 +321,6 @@ fn main() {
         ])
     );
     println!("The prediction for data is: {:?}", prediction);
+    }
+    }).unwrap().join().unwrap();
 }
