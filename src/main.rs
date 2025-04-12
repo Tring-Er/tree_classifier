@@ -147,7 +147,7 @@ fn generate_nodes(
             on_smaller_false_indexes = false_indexes;
         }
     }
-    if smaller_gini == node_gini_impurity {
+    if f32::abs(smaller_gini - node_gini_impurity) <= 0.000001 {
         return leaf_node(number_of_true, number_of_false, node_gini_impurity);
     }
     let on_true_node: Node = generate_nodes(
@@ -177,7 +177,7 @@ fn main() {
     let mut html_decks: Vec<String> = Vec::new();
     let mut counter: usize = 1;
     let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-league-2025-04-018957", "https://www.mtgo.com/decklist/pauper-league-2025-04-028957", "https://www.mtgo.com/decklist/pauper-league-2025-04-038957", "https://www.mtgo.com/decklist/pauper-league-2025-04-048957", "https://www.mtgo.com/decklist/pauper-league-2025-04-058957", "https://www.mtgo.com/decklist/pauper-league-2025-04-068957", "https://www.mtgo.com/decklist/pauper-league-2025-04-078957", "https://www.mtgo.com/decklist/pauper-league-2025-04-089081", "https://www.mtgo.com/decklist/pauper-league-2025-04-088957", "https://www.mtgo.com/decklist/pauper-league-2025-04-099081", "https://www.mtgo.com/decklist/pauper-league-2025-04-109081"]);
-    for urls_index_sets in [vec![0, 1, 2, 3], vec![4, 5, 6, 7], vec![8, 9, 10]] {
+    for urls_index_sets in [vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]] {
         html_decks = Vec::new();
     for url_index in urls_index_sets{
         println!("Requesting n: {:?}", counter);
@@ -198,7 +198,7 @@ fn main() {
         .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
         .header("Sec-GPC", "1")
         .header("Connection", "keep-alive")
-        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=false; JSESSIONID=5A422558FDAF799F2ED96724084A9FF1.lvs-foyert2-3409")
+        .header("Cookie", "JSESSIONID=576B6692664D751DF906E3434405398D.lvs-foyert1-3409; locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait")
         .header("Upgrade-Insecure-Requests", "1")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
@@ -298,6 +298,7 @@ fn main() {
         has_green_data,
     ]);
     data_array_map.append(&mut lands_count_data);
+    assert_eq!(deck_position_less_than_9_data.len(), html_decks.len());
     let generated_nodes: Node = generate_nodes(
         &Vec::from_iter(0..deck_position_less_than_9_data.len()),
         &data_array_map,
