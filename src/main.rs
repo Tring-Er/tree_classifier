@@ -175,9 +175,11 @@ fn main() {
     std::thread::Builder::new().stack_size(std::mem::size_of::<f64>() * 700 * N).spawn(|| {
     let mut page_html: String = String::new();
     let mut html_decks: Vec<String> = Vec::new();
+    let mut ranks: Vec<u64> = Vec::new();
     let mut counter: usize = 1;
-    let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-league-2025-04-018957", "https://www.mtgo.com/decklist/pauper-league-2025-04-028957", "https://www.mtgo.com/decklist/pauper-league-2025-04-038957", "https://www.mtgo.com/decklist/pauper-league-2025-04-048957", "https://www.mtgo.com/decklist/pauper-league-2025-04-058957", "https://www.mtgo.com/decklist/pauper-league-2025-04-068957", "https://www.mtgo.com/decklist/pauper-league-2025-04-078957", "https://www.mtgo.com/decklist/pauper-league-2025-04-089081", "https://www.mtgo.com/decklist/pauper-league-2025-04-088957", "https://www.mtgo.com/decklist/pauper-league-2025-04-099081", "https://www.mtgo.com/decklist/pauper-league-2025-04-109081"]);
-    for urls_index_sets in [vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]] {
+    let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1812769888"]);
+    //let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-league-2025-04-018957", "https://www.mtgo.com/decklist/pauper-league-2025-04-028957", "https://www.mtgo.com/decklist/pauper-league-2025-04-038957", "https://www.mtgo.com/decklist/pauper-league-2025-04-048957", "https://www.mtgo.com/decklist/pauper-league-2025-04-058957", "https://www.mtgo.com/decklist/pauper-league-2025-04-068957", "https://www.mtgo.com/decklist/pauper-league-2025-04-078957", "https://www.mtgo.com/decklist/pauper-league-2025-04-089081", "https://www.mtgo.com/decklist/pauper-league-2025-04-088957", "https://www.mtgo.com/decklist/pauper-league-2025-04-099081", "https://www.mtgo.com/decklist/pauper-league-2025-04-109081"]);
+    for urls_index_sets in [vec![0]] {
         html_decks = Vec::new();
     for url_index in urls_index_sets{
         println!("Requesting n: {:?}", counter);
@@ -198,7 +200,7 @@ fn main() {
         .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
         .header("Sec-GPC", "1")
         .header("Connection", "keep-alive")
-        .header("Cookie", "JSESSIONID=576B6692664D751DF906E3434405398D.lvs-foyert1-3409; locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait")
+        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=35D7B06AD49467F53B3A9C39065515C2.lvs-foyert1-3409")
         .header("Upgrade-Insecure-Requests", "1")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
@@ -218,8 +220,25 @@ fn main() {
             page_html = page_html[first_index + 29..second_index - 6].to_string();
         }
         
-        let unfiltered_decks: Vec<&str> = page_html.split(r#""loginid":""#).collect();
+        let end_decks_index: usize;
+        if let Some(index) = page_html.find("\"brackets\":") {
+            end_decks_index = index;
+        } else {
+            panic!("End decks index not found");
+        }
+
+        let unfiltered_decks: Vec<&str> = page_html[..end_decks_index].split(r#""loginid":""#).collect();
+        let mut login_ids: Vec<&str> = Vec::new();
+        for unfiltered_deck in &unfiltered_decks {
+            let login_id_end_index: usize = match unfiltered_deck.find("\"") {
+               Some(value) => value,
+               None => panic!("Value not found"),
+            };
+            let login_id: &str = &unfiltered_deck[..login_id_end_index];
+            login_ids.push(login_id);
+        }
         println!("Request recived with: {:?} games", unfiltered_decks.len() - 1);
+        ranks.append(&mut extract_ranks(&page_html));
         for deck_index in 1..unfiltered_decks.len() {
             html_decks.push(unfiltered_decks[deck_index].to_string());
         }
@@ -234,8 +253,9 @@ fn main() {
     let mut lands_count: Vec<u8> = Vec::new();
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
     let random_scoring: [u8; 7] = [1, 1, 2, 5, 8, 13, 21];
+    println!("{:?}, {:?}", html_decks.len(), ranks.len());
     for html_deck_index in 0..html_decks.len() {
-        deck_position_less_than_9_data.push(random_scoring[html_deck_index % 7] < 8);
+        deck_position_less_than_9_data.push(ranks[html_deck_index] < 8);
         let html_cards: Vec<&str> =
             html_decks[html_deck_index]
             .split(r#""docid":""#).collect();
@@ -268,6 +288,7 @@ fn main() {
         has_green_data.push(has_green_mana);
         lands_count.push(0);
     }
+    println!("{:?}\n{:?}", ranks, deck_position_less_than_9_data);
     let mut unique_lands_values: Vec<u8> = Vec::new();
     for land_amount in &lands_count {
         let mut contains_value: bool = false;
@@ -325,3 +346,34 @@ fn main() {
     }
     }).unwrap().join().unwrap();
 }
+
+
+use serde_json::Value;
+
+fn extract_ranks(json_data: &str) -> Vec<u64> {
+    // Parse the JSON string
+    let parsed_data: Value = serde_json::from_str(json_data).expect("No data found");
+    
+    // Access the standings array
+    let mut standings = match parsed_data["standings"].as_array() {
+        Some(value) => Vec::from_iter(value),
+        None => Vec::new(),
+    };
+    
+    let mut ranks: Vec<u64> = Vec::new();
+    for object in standings {
+        match object.clone()["rank"].take().as_str() {
+            Some(value) => ranks.push(value.parse().unwrap()),
+            None => ()
+        }
+    }
+    
+    return ranks;
+}
+
+// Example usage:
+// let json_data = r#"{...}"#; // Your JSON string here
+// match extract_login_names(json_data) {
+//     Ok(names) => println!("Login names: {:?}", names),
+//     Err(e) => eprintln!("Error parsing JSON: {}", e),
+// }
