@@ -42,7 +42,7 @@ fn gini_impurity(
     return 1.0 - left_correctness_score - right_corerctness_score;
 }
 
-fn evaluate_data(tree: Node, data: Vec<bool>) -> bool {
+fn evaluate_data(tree: &Node, data: Vec<bool>) -> bool {
     if let Some(value) = tree.prediction {
         return value;
     }
@@ -51,12 +51,12 @@ fn evaluate_data(tree: Node, data: Vec<bool>) -> bool {
         data_result = data[feature_index];
     }
     if data_result {
-        if let Some(node) = tree.on_true {
-            return evaluate_data(*node, data);
+        if let Some(node) = &tree.on_true {
+            return evaluate_data(&node, data);
         }
     } else {
-        if let Some(node) = tree.on_false {
-            return evaluate_data(*node, data);
+        if let Some(node) = &tree.on_false {
+            return evaluate_data(&node, data);
         }
     }
     return false;
@@ -178,7 +178,6 @@ fn main() {
     let mut ranks: Vec<u64> = Vec::new();
     let mut counter: usize = 1;
     let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0412763152", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0512763169", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0612763187", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1112765765", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1212765782", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1812769888", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1912769905", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-2012769922"]);
-    //let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-league-2025-04-018957", "https://www.mtgo.com/decklist/pauper-league-2025-04-028957", "https://www.mtgo.com/decklist/pauper-league-2025-04-038957", "https://www.mtgo.com/decklist/pauper-league-2025-04-048957", "https://www.mtgo.com/decklist/pauper-league-2025-04-058957", "https://www.mtgo.com/decklist/pauper-league-2025-04-068957", "https://www.mtgo.com/decklist/pauper-league-2025-04-078957", "https://www.mtgo.com/decklist/pauper-league-2025-04-089081", "https://www.mtgo.com/decklist/pauper-league-2025-04-088957", "https://www.mtgo.com/decklist/pauper-league-2025-04-099081", "https://www.mtgo.com/decklist/pauper-league-2025-04-109081"]);
     for urls_index_sets in [vec![0, 1, 2, 3, 4, 5, 6, 7]] {
         html_decks = Vec::new();
     for url_index in urls_index_sets{
@@ -200,7 +199,7 @@ fn main() {
         .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
         .header("Sec-GPC", "1")
         .header("Connection", "keep-alive")
-        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=DE8634249129F65358CD3D74EA104D71.lvs-foyert1-3409")
+        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=02D3896F513ABFDC3F447AB30656D8DF.lvs-foyert1-3409")
         .header("Upgrade-Insecure-Requests", "1")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
@@ -288,7 +287,6 @@ fn main() {
         has_green_data.push(has_green_mana);
         lands_count.push(0);
     }
-    println!("{:?}\n{:?}", ranks, deck_position_less_than_9_data);
     let mut unique_lands_values: Vec<u8> = Vec::new();
     for land_amount in &lands_count {
         let mut contains_value: bool = false;
@@ -302,7 +300,7 @@ fn main() {
             unique_lands_values.push(*land_amount);
         }
     }
-    println!("Unique lands values: {:?}\nW: {:?}\nU: {:?}\nB: {:?}\nR: {:?}\nG: {:?}", unique_lands_values, has_white_data, has_blue_data, has_black_data, has_red_data, has_green_data);
+    println!("Unique lands values: {:?}", unique_lands_values);
     let mut lands_count_data: Vec<Vec<bool>> = Vec::new();
     for unique_value in unique_lands_values {
         let mut unique_value_data: Vec<bool> = Vec::new();
@@ -311,38 +309,33 @@ fn main() {
         }
         lands_count_data.push(unique_value_data);
     }
+    let training_percentage: f32 = 0.8;
     let mut data_array_map: Vec<Vec<bool>> = Vec::from([
-        has_white_data,
-        has_blue_data,
-        has_black_data,
-        has_red_data,
-        has_green_data,
+        has_white_data[0..(has_white_data.len() as f32 * training_percentage) as usize].to_owned(),
+        has_blue_data[0..(has_blue_data.len() as f32 * training_percentage) as usize].to_owned(),
+        has_black_data[0..(has_black_data.len() as f32 * training_percentage) as usize].to_owned(),
+        has_red_data[0..(has_red_data.len() as f32 * training_percentage) as usize].to_owned(),
+        has_green_data[0..(has_green_data.len() as f32 * training_percentage) as usize].to_owned(),
     ]);
-    data_array_map.append(&mut lands_count_data);
-    assert_eq!(deck_position_less_than_9_data.len(), html_decks.len());
+    data_array_map.append(&mut lands_count_data[0..(lands_count_data.len() as f32 * training_percentage) as usize].to_vec());
     let generated_nodes: Node = generate_nodes(
-        &Vec::from_iter(0..deck_position_less_than_9_data.len()),
+        &Vec::from_iter(0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize),
         &data_array_map,
-        &Vec::from(deck_position_less_than_9_data)
+        &deck_position_less_than_9_data[0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize].to_vec(),
     );
     println!("Node: {:?}", generated_nodes);
     println!("0:W, 1:U, 2:B, 3:R, 4:G");
-    
-    let prediction: bool = evaluate_data(
-        generated_nodes,
-        Vec::from([
-            false,
-            false,
-            true,
-            true,
-            false,
-            false,
-            false,
-            true,
-            false,
-        ])
-    );
-    println!("The prediction for data is: {:?}", prediction);
+    let mut correct_predictions: usize = 0;
+    let mut total_predictions: usize = 0;
+    for index in (deck_position_less_than_9_data.len() as f32 * training_percentage) as usize..deck_position_less_than_9_data.len() - 1 {
+        total_predictions += 1;
+        let prediction: bool = evaluate_data(&generated_nodes, Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index], false]));
+        println!("The prediction for data is: {:?}", prediction);
+        if prediction == deck_position_less_than_9_data[index] {
+            correct_predictions += 1;
+        }
+    }
+    println!("Prediction %: {:?}\nCorect: {:?}\nTotal: {:?}", correct_predictions as f32 / total_predictions as f32 * 100.0, correct_predictions, total_predictions);
     }
     }).unwrap().join().unwrap();
 }
@@ -351,10 +344,8 @@ fn main() {
 use serde_json::Value;
 
 fn extract_ranks(json_data: &str) -> Vec<u64> {
-    // Parse the JSON string
     let parsed_data: Value = serde_json::from_str(json_data).expect("No data found");
     
-    // Access the standings array
     let mut standings = match parsed_data["standings"].as_array() {
         Some(value) => Vec::from_iter(value),
         None => Vec::new(),
@@ -370,10 +361,3 @@ fn extract_ranks(json_data: &str) -> Vec<u64> {
     
     return ranks;
 }
-
-// Example usage:
-// let json_data = r#"{...}"#; // Your JSON string here
-// match extract_login_names(json_data) {
-//     Ok(names) => println!("Login names: {:?}", names),
-//     Err(e) => eprintln!("Error parsing JSON: {}", e),
-// }
