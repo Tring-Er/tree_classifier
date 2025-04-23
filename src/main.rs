@@ -177,9 +177,9 @@ fn main() {
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     let mut counter: usize = 1;
-    let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1812769888"]);
+    let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0412763152", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0512763169", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0612763187", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1112765765", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1212765782", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1812769888", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1912769905", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-2012769922"]);
     //let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-league-2025-04-018957", "https://www.mtgo.com/decklist/pauper-league-2025-04-028957", "https://www.mtgo.com/decklist/pauper-league-2025-04-038957", "https://www.mtgo.com/decklist/pauper-league-2025-04-048957", "https://www.mtgo.com/decklist/pauper-league-2025-04-058957", "https://www.mtgo.com/decklist/pauper-league-2025-04-068957", "https://www.mtgo.com/decklist/pauper-league-2025-04-078957", "https://www.mtgo.com/decklist/pauper-league-2025-04-089081", "https://www.mtgo.com/decklist/pauper-league-2025-04-088957", "https://www.mtgo.com/decklist/pauper-league-2025-04-099081", "https://www.mtgo.com/decklist/pauper-league-2025-04-109081"]);
-    for urls_index_sets in [vec![0]] {
+    for urls_index_sets in [vec![0, 1, 2, 3, 4, 5, 6, 7]] {
         html_decks = Vec::new();
     for url_index in urls_index_sets{
         println!("Requesting n: {:?}", counter);
@@ -200,7 +200,7 @@ fn main() {
         .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
         .header("Sec-GPC", "1")
         .header("Connection", "keep-alive")
-        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=35D7B06AD49467F53B3A9C39065515C2.lvs-foyert1-3409")
+        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=DE8634249129F65358CD3D74EA104D71.lvs-foyert1-3409")
         .header("Upgrade-Insecure-Requests", "1")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
