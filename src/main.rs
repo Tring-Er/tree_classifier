@@ -1,3 +1,8 @@
+/*
+ * Version without lands = 74.5098%
+ * Version with lands = 74.5098%
+ */
+
 use reqwest;
 use std;
 
@@ -199,7 +204,7 @@ fn main() {
         .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
         .header("Sec-GPC", "1")
         .header("Connection", "keep-alive")
-        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=02D3896F513ABFDC3F447AB30656D8DF.lvs-foyert1-3409")
+        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=544C148073F04AD305D78DEFA5D384D7.lvs-foyert2-3409")
         .header("Upgrade-Insecure-Requests", "1")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
@@ -249,7 +254,7 @@ fn main() {
     let mut has_black_data: Vec<bool> = Vec::new();
     let mut has_red_data: Vec<bool> = Vec::new();
     let mut has_green_data: Vec<bool> = Vec::new();
-    let mut lands_count: Vec<u8> = Vec::new();
+    let mut tmp_lands_count_data: Vec<u8> = Vec::new();
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
     let random_scoring: [u8; 7] = [1, 1, 2, 5, 8, 13, 21];
     println!("{:?}, {:?}", html_decks.len(), ranks.len());
@@ -263,6 +268,7 @@ fn main() {
         let mut has_black_mana: bool = false;
         let mut has_red_mana: bool = false;
         let mut has_green_mana: bool = false;
+        let mut lands_count: u8 = 0;
         for html_card in html_cards {
             if html_card.contains("COLOR_WHITE") {
                 has_white_mana = true;
@@ -279,16 +285,29 @@ fn main() {
             if html_card.contains("COLOR_GREEN") {
                 has_green_mana = true;
             }
+            if html_card.contains("\"card_type\":\"LAND  \",") {
+                if let Some(first_index) = html_card.find("\"qty\":\"") {
+                    if let Some(second_index) = html_card.find("\",\"sideboard\"") {
+                        lands_count += match html_card[first_index + 7..second_index].parse() {
+                            Ok(value) => value,
+                            Err(e) => {
+                                println!("Not able to parse. {:?}", e);
+                                0
+                            }
+                        };
+                    }
+                }
+            }
         }
         has_white_data.push(has_white_mana);
         has_blue_data.push(has_blue_mana);
         has_black_data.push(has_black_mana);
         has_red_data.push(has_red_mana);
         has_green_data.push(has_green_mana);
-        lands_count.push(0);
+        tmp_lands_count_data.push(lands_count);
     }
     let mut unique_lands_values: Vec<u8> = Vec::new();
-    for land_amount in &lands_count {
+    for land_amount in &tmp_lands_count_data {
         let mut contains_value: bool = false;
         for unique_value in &unique_lands_values {
             if *land_amount == *unique_value {
@@ -304,8 +323,9 @@ fn main() {
     let mut lands_count_data: Vec<Vec<bool>> = Vec::new();
     for unique_value in unique_lands_values {
         let mut unique_value_data: Vec<bool> = Vec::new();
-        for land_amount in &lands_count {
-            unique_value_data.push(*land_amount < unique_value);
+        for land_amount in &tmp_lands_count_data {
+            let tmp: bool = *land_amount < unique_value;
+            unique_value_data.push(tmp);
         }
         lands_count_data.push(unique_value_data);
     }
@@ -317,7 +337,7 @@ fn main() {
         has_red_data[0..(has_red_data.len() as f32 * training_percentage) as usize].to_owned(),
         has_green_data[0..(has_green_data.len() as f32 * training_percentage) as usize].to_owned(),
     ]);
-    data_array_map.append(&mut lands_count_data[0..(lands_count_data.len() as f32 * training_percentage) as usize].to_vec());
+    data_array_map.append(&mut lands_count_data[0..][0..(lands_count_data.len() as f32 * training_percentage) as usize].to_vec());
     let generated_nodes: Node = generate_nodes(
         &Vec::from_iter(0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize),
         &data_array_map,
@@ -329,7 +349,11 @@ fn main() {
     let mut total_predictions: usize = 0;
     for index in (deck_position_less_than_9_data.len() as f32 * training_percentage) as usize..deck_position_less_than_9_data.len() - 1 {
         total_predictions += 1;
-        let prediction: bool = evaluate_data(&generated_nodes, Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index], false]));
+        let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
+        for land_data in &lands_count_data {
+            vector_data.push(land_data[index]);
+        }
+        let prediction: bool = evaluate_data(&generated_nodes, vector_data);
         println!("The prediction for data is: {:?}", prediction);
         if prediction == deck_position_less_than_9_data[index] {
             correct_predictions += 1;
