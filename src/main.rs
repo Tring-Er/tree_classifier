@@ -1,6 +1,7 @@
 /*
- * Version without lands = 74.5098%
- * Version with lands = 74.5098%
+ * Version without lands = 76.1904%
+ * Version with lands = 77.7778%
+ * Version with creatures = 63.4920%
  */
 
 use reqwest;
@@ -182,8 +183,8 @@ fn main() {
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     let mut counter: usize = 1;
-    let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0412763152", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0512763169", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0612763187", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1112765765", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1212765782", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1812769888", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1912769905", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-2012769922"]);
-    for urls_index_sets in [vec![0, 1, 2, 3, 4, 5, 6, 7]] {
+    let urls: Vec<&str> = Vec::from(["https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0412763152", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0512763169", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-0612763187", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1112765765", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1212765782", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1812769888", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-1912769905", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-2012769922", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-2512772646", "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-2612772667"]);
+    for urls_index_sets in [vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]] {
         html_decks = Vec::new();
     for url_index in urls_index_sets{
         println!("Requesting n: {:?}", counter);
@@ -204,7 +205,7 @@ fn main() {
         .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
         .header("Sec-GPC", "1")
         .header("Connection", "keep-alive")
-        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=544C148073F04AD305D78DEFA5D384D7.lvs-foyert2-3409")
+        .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=6653A133A2D8F719BD04FA8E26D6D75D.lvs-foyert1-3409")
         .header("Upgrade-Insecure-Requests", "1")
         .header("Sec-Fetch-Dest", "document")
         .header("Sec-Fetch-Mode", "navigate")
@@ -255,6 +256,7 @@ fn main() {
     let mut has_red_data: Vec<bool> = Vec::new();
     let mut has_green_data: Vec<bool> = Vec::new();
     let mut tmp_lands_count_data: Vec<u8> = Vec::new();
+    let mut tmp_creatures_count_data: Vec<u8> = Vec::new();
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
     let random_scoring: [u8; 7] = [1, 1, 2, 5, 8, 13, 21];
     println!("{:?}, {:?}", html_decks.len(), ranks.len());
@@ -269,6 +271,7 @@ fn main() {
         let mut has_red_mana: bool = false;
         let mut has_green_mana: bool = false;
         let mut lands_count: u8 = 0;
+        let mut creatures_count: u8 = 0;
         for html_card in html_cards {
             if html_card.contains("COLOR_WHITE") {
                 has_white_mana = true;
@@ -298,6 +301,19 @@ fn main() {
                     }
                 }
             }
+            if html_card.contains("\"card_type\":\"ISCREA\",") {
+                if let Some(first_index) = html_card.find("\"qty\":\"") {
+                    if let Some(second_index) = html_card.find("\",\"sideboard\"") {
+                        creatures_count += match html_card[first_index + 7..second_index].parse() {
+                            Ok(value) => value,
+                            Err(e) => {
+                                println!("Not able to parse. {:?}", e);
+                                0
+                            }
+                        };
+                    }
+                }
+            }
         }
         has_white_data.push(has_white_mana);
         has_blue_data.push(has_blue_mana);
@@ -305,7 +321,11 @@ fn main() {
         has_red_data.push(has_red_mana);
         has_green_data.push(has_green_mana);
         tmp_lands_count_data.push(lands_count);
+        tmp_creatures_count_data.push(creatures_count);
     }
+
+
+
     let mut unique_lands_values: Vec<u8> = Vec::new();
     for land_amount in &tmp_lands_count_data {
         let mut contains_value: bool = false;
@@ -319,7 +339,23 @@ fn main() {
             unique_lands_values.push(*land_amount);
         }
     }
+    let mut unique_creatures_values: Vec<u8> = Vec::new();
+    for creatures_amount in &tmp_creatures_count_data {
+        let mut contains_value: bool = false;
+        for unique_value in &unique_creatures_values {
+            if *creatures_amount == *unique_value {
+                contains_value = true;
+                break;
+            }
+        }
+        if !contains_value {
+            unique_creatures_values.push(*creatures_amount);
+        }
+    }
+
+    println!("0:W, 1:U, 2:B, 3:R, 4:G");
     println!("Unique lands values: {:?}", unique_lands_values);
+    println!("Unique creatures values: {:?}", unique_creatures_values);
     let mut lands_count_data: Vec<Vec<bool>> = Vec::new();
     for unique_value in unique_lands_values {
         let mut unique_value_data: Vec<bool> = Vec::new();
@@ -329,6 +365,18 @@ fn main() {
         }
         lands_count_data.push(unique_value_data);
     }
+    let mut creatures_count_data: Vec<Vec<bool>> = Vec::new();
+    for unique_value in unique_creatures_values {
+        let mut unique_value_data: Vec<bool> = Vec::new();
+        for creatures_amount in &tmp_creatures_count_data {
+            let tmp: bool = *creatures_amount < unique_value;
+            unique_value_data.push(tmp);
+        }
+        creatures_count_data.push(unique_value_data);
+    }
+
+
+
     let training_percentage: f32 = 0.8;
     let mut data_array_map: Vec<Vec<bool>> = Vec::from([
         has_white_data[0..(has_white_data.len() as f32 * training_percentage) as usize].to_owned(),
@@ -338,13 +386,13 @@ fn main() {
         has_green_data[0..(has_green_data.len() as f32 * training_percentage) as usize].to_owned(),
     ]);
     data_array_map.append(&mut lands_count_data[0..][0..(lands_count_data.len() as f32 * training_percentage) as usize].to_vec());
+    data_array_map.append(&mut creatures_count_data[0..][0..(creatures_count_data.len() as f32 * training_percentage) as usize].to_vec());
     let generated_nodes: Node = generate_nodes(
         &Vec::from_iter(0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize),
         &data_array_map,
         &deck_position_less_than_9_data[0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize].to_vec(),
     );
     println!("Node: {:?}", generated_nodes);
-    println!("0:W, 1:U, 2:B, 3:R, 4:G");
     let mut correct_predictions: usize = 0;
     let mut total_predictions: usize = 0;
     for index in (deck_position_less_than_9_data.len() as f32 * training_percentage) as usize..deck_position_less_than_9_data.len() - 1 {
@@ -352,6 +400,9 @@ fn main() {
         let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
         for land_data in &lands_count_data {
             vector_data.push(land_data[index]);
+        }
+        for creature_data in &creatures_count_data {
+            vector_data.push(creature_data[index]);
         }
         let prediction: bool = evaluate_data(&generated_nodes, vector_data);
         println!("The prediction for data is: {:?}", prediction);
