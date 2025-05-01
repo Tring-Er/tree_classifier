@@ -419,20 +419,22 @@ fn main() {
 use serde_json::Value;
 
 fn extract_ranks(json_data: &str) -> Vec<u64> {
-    let parsed_data: Value = serde_json::from_str(json_data).expect("No data found");
-    
-    let mut standings = match parsed_data["standings"].as_array() {
-        Some(value) => Vec::from_iter(value),
-        None => Vec::new(),
+    const STANDIGS_KEY: &str = "standings";
+    let parsed_data: Value = match serde_json::from_str(json_data) {
+        Ok(value) => value,
+        Err(error) => panic!("Unable to parse json: {:?}", error),
     };
-    
+    let standings = match parsed_data[STANDIGS_KEY].as_array() {
+        Some(value) => Vec::from_iter(value),
+        None => panic!("Unable to find key: \"{:?}\"", STANDIGS_KEY),
+    };
     let mut ranks: Vec<u64> = Vec::new();
     for object in standings {
-        match object.clone()["rank"].take().as_str() {
-            Some(value) => ranks.push(value.parse().unwrap()),
-            None => ()
+        if let Value::String(value) = &object["rank"] {
+            if let Ok(rank_value) = value.parse::<u64>() {
+                ranks.push(rank_value);
+            }
         }
     }
-    
     return ranks;
 }
