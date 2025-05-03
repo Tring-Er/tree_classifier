@@ -4,10 +4,10 @@
  * Version with creatures = 63.4920%
  */
 
-use std;
+use std::{thread, time::Duration};
 
 use serde_json::Value;
-use reqwest;
+use reqwest::blocking::{Client, Response};
 
 #[derive(Debug)]
 struct Node {
@@ -180,9 +180,11 @@ fn generate_nodes(
 
 
 fn main() {
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=F0AA131DE3DABC64E264F93494E869F9.lvs-foyert2-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
-    const MTGO_URI: &str = "https://www.mtgo.com/decklist/pauper-challenge-32-2025-04-";
+    const HOST: &str = "www.mtgo.com";
+    let mtgo_uri: String = format!("https://{}/decklist/pauper-challenge-32-2025-04-", HOST); 
     let mut urls: Vec<String> = Vec::new();
     const URL_QUERIES: [&str; 10] = [
         "0412763152",
@@ -197,16 +199,16 @@ fn main() {
         "2612772667",
     ];
     for url_query in URL_QUERIES {
-        urls.push(format!("{}{}", MTGO_URI, url_query));
+        urls.push(format!("{}{}", mtgo_uri, url_query));
     }
     for url_index in 0..URL_QUERIES.len() {
-        println!("Requesting url: {:?}", urls[url_index]);
-        std::thread::sleep(std::time::Duration::from_secs(10));
-        let client: reqwest::blocking::Client = reqwest::blocking::Client::new();
         let url: &str = &urls[url_index];
-        let response: Result<reqwest::blocking::Response, reqwest::Error> = client
-    .get(url)
-            .header("Host", "www.mtgo.com")
+        println!("Requesting url: {:?}", url);
+        thread::sleep(Duration::from_secs(7));
+        let client: Client = Client::new();
+        let response: Result<Response, reqwest::Error> = client
+            .get(url)
+            .header("Host", HOST)
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
             .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             .header("Accept-Language", "en-Us,en;q=0.5")
@@ -214,7 +216,7 @@ fn main() {
             .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
             .header("Sec-GPC", "1")
             .header("Connection", "keep-alive")
-            .header("Cookie", "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=F0AA131DE3DABC64E264F93494E869F9.lvs-foyert2-3409")
+            .header("Cookie", COOKIES)
             .header("Upgrade-Insecure-Requests", "1")
             .header("Sec-Fetch-Dest", "document")
             .header("Sec-Fetch-Mode", "navigate")
@@ -223,55 +225,54 @@ fn main() {
             .header("Priority", "u=0, i")
             .send();
         if let Ok(resp) = response {
-            let mut page_html: String = resp.text().expect("failed");
-
-            if let (Some(first_index), Some(second_index)) = (page_html.find(
-                r#"window.MTGO.decklists.data = "#
-            ),
-            page_html.find(
-                r#"window.MTGO.decklists.type = "#
-            )) {
-                page_html = page_html[first_index + 29..second_index - 6].to_string();
-            }
-            
-            let end_decks_index: usize;
-            if let Some(index) = page_html.find("\"brackets\":") {
-                end_decks_index = index;
-            } else {
-                panic!("End decks index not found");
-            }
-
-            let unfiltered_decks: Vec<&str> = page_html[..end_decks_index].split(r#""loginid":""#).collect();
-            let mut login_ids: Vec<&str> = Vec::new();
-            for unfiltered_deck in &unfiltered_decks {
-                let login_id_end_index: usize = match unfiltered_deck.find("\"") {
-                   Some(value) => value,
-                   None => panic!("Value not found"),
-                };
-                let login_id: &str = &unfiltered_deck[..login_id_end_index];
-                login_ids.push(login_id);
-            }
-            println!("Request recived with: {:?} games", unfiltered_decks.len() - 1);
-            const STANDIGS_KEY: &str = "standings";
-            let parsed_data: Value = match serde_json::from_str(&page_html) {
-                Ok(value) => value,
-                Err(error) => panic!("Unable to parse json: {:?}", error),
-            };
-            let standings = match parsed_data[STANDIGS_KEY].as_array() {
-                Some(value) => Vec::from_iter(value),
-                None => panic!("Unable to find key: \"{:?}\"", STANDIGS_KEY),
-            };
-            let mut tmp_ranks: Vec<u64> = Vec::new();
-            for object in standings {
-                if let Value::String(value) = &object["rank"] {
-                    if let Ok(rank_value) = value.parse::<u64>() {
-                        ranks.push(rank_value);
+            if let Ok(mut page_html) = resp.text() {
+                const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
+                if let (Some(first_index), Some(second_index)) = (
+                    page_html.find(FIST_INDEX_STRING),
+                    page_html.find(r#"window.MTGO.decklists.type = "#)
+                ) {
+                    page_html = page_html[first_index + FIST_INDEX_STRING.len()..second_index - 6].to_string();
+                    let end_decks_index: usize;
+                    if let Some(index) = page_html.find("\"brackets\":") {
+                        end_decks_index = index;
+                        let raw_decks: Vec<&str> = page_html[..end_decks_index].split(r#""loginid":""#).collect();
+                        println!("Request recived with: {:?} games", raw_decks.len() - 1);
+                        let mut login_ids: Vec<&str> = Vec::new();
+                        for raw_deck in &raw_decks {
+                            if let Some(login_id_end_index) = raw_deck.find("\"") {
+                                let login_id: &str = &raw_deck[..login_id_end_index];
+                                login_ids.push(login_id);
+                            } else {
+                               panic!("Value not found");
+                            }
+                        }
+                        const STANDIGS_KEY: &str = "standings";
+                        match serde_json::from_str::<Value>(&page_html) {
+                            Ok(parsed_data) => {
+                                if let Some(standings) = parsed_data[STANDIGS_KEY].as_array() {
+                                    let standings: Vec<&Value> = Vec::from_iter(standings);
+                                    let mut tmp_ranks: Vec<u64> = Vec::new();
+                                    for object in standings {
+                                        if let Value::String(value) = &object["rank"] {
+                                            if let Ok(rank_value) = value.parse::<u64>() {
+                                                ranks.push(rank_value);
+                                            }
+                                        }
+                                    }
+                                    ranks.append(&mut tmp_ranks);
+                                } else {
+                                    panic!("Unable to find key: \"{:?}\"", STANDIGS_KEY);
+                                }
+                            },
+                            Err(error) => panic!("Unable to parse json: {:?}", error),
+                        };
+                        for deck_index in 1..raw_decks.len() {
+                            html_decks.push(raw_decks[deck_index].to_string());
+                        }
+                    } else {
+                        panic!("End decks index not found");
                     }
                 }
-            }
-            ranks.append(&mut tmp_ranks);
-            for deck_index in 1..unfiltered_decks.len() {
-                html_decks.push(unfiltered_decks[deck_index].to_string());
             }
         }
     }
