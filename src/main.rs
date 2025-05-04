@@ -19,6 +19,32 @@ struct Node {
     prediction: Option<bool>,
 }
 
+fn get_card_type_quantity(html_card: &str, card_type: &str) -> Result<Option<u8>, &'static str> {
+    let amount: u8;
+    if html_card.contains(&format!("\"card_type\":\"{}\",", card_type)) {
+        let first_index: usize;
+        if let Some(value) = html_card.find("\"qty\":\"") {
+            first_index = value;
+        } else {
+            return Err("Unable to find card type first index");
+        }
+        let second_index: usize;
+        if let Some(value) = html_card.find("\",\"sideboard\"") {
+            second_index = value;
+        } else {
+            return Err("Unable to find card type second index");
+        }
+        if let Ok(value) = html_card[first_index + 7..second_index].parse::<u8>() {
+            amount = value;
+        } else {
+            return Err("Unable to parse card type amount");
+        }
+    } else {
+        return Ok(None);
+    }
+    return Ok(Some(amount));
+}
+
 fn correctness_score(
     number_of_correct: usize,
     number_of_total: usize
@@ -180,7 +206,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=F0AA131DE3DABC64E264F93494E869F9.lvs-foyert2-3409";
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=9ABF880853A1867BA4B85ADE796E49B5.lvs-foyert1-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
@@ -206,7 +232,7 @@ fn main() {
         println!("Requesting url: {:?}", url);
         thread::sleep(Duration::from_secs(7));
         let client: Client = Client::new();
-        let response: Result<Response, reqwest::Error> = client
+        let result_response: Result<Response, reqwest::Error> = client
             .get(url)
             .header("Host", HOST)
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
@@ -224,56 +250,79 @@ fn main() {
             .header("Sec-Fetch-User", "?1")
             .header("Priority", "u=0, i")
             .send();
-        if let Ok(resp) = response {
-            if let Ok(mut page_html) = resp.text() {
-                const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
-                if let (Some(first_index), Some(second_index)) = (
-                    page_html.find(FIST_INDEX_STRING),
-                    page_html.find(r#"window.MTGO.decklists.type = "#)
-                ) {
-                    page_html = page_html[first_index + FIST_INDEX_STRING.len()..second_index - 6].to_string();
-                    let end_decks_index: usize;
-                    if let Some(index) = page_html.find("\"brackets\":") {
-                        end_decks_index = index;
-                        let raw_decks: Vec<&str> = page_html[..end_decks_index].split(r#""loginid":""#).collect();
-                        println!("Request recived with: {:?} games", raw_decks.len() - 1);
-                        let mut login_ids: Vec<&str> = Vec::new();
-                        for raw_deck in &raw_decks {
-                            if let Some(login_id_end_index) = raw_deck.find("\"") {
-                                let login_id: &str = &raw_deck[..login_id_end_index];
-                                login_ids.push(login_id);
-                            } else {
-                               panic!("Value not found");
-                            }
-                        }
-                        const STANDIGS_KEY: &str = "standings";
-                        match serde_json::from_str::<Value>(&page_html) {
-                            Ok(parsed_data) => {
-                                if let Some(standings) = parsed_data[STANDIGS_KEY].as_array() {
-                                    let standings: Vec<&Value> = Vec::from_iter(standings);
-                                    let mut tmp_ranks: Vec<u64> = Vec::new();
-                                    for object in standings {
-                                        if let Value::String(value) = &object["rank"] {
-                                            if let Ok(rank_value) = value.parse::<u64>() {
-                                                ranks.push(rank_value);
-                                            }
-                                        }
-                                    }
-                                    ranks.append(&mut tmp_ranks);
-                                } else {
-                                    panic!("Unable to find key: \"{:?}\"", STANDIGS_KEY);
-                                }
-                            },
-                            Err(error) => panic!("Unable to parse json: {:?}", error),
-                        };
-                        for deck_index in 1..raw_decks.len() {
-                            html_decks.push(raw_decks[deck_index].to_string());
-                        }
+        let response: Response;
+        if let Ok(value) = result_response {
+            response = value;
+        } else {
+            panic!("Unable to get the response");
+        }
+        let mut page_html: String;
+        if let Ok(value) = response.text() {
+            page_html = value;
+        } else {
+            panic!("Unable to find text of the response");
+        }
+        const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
+        let first_index: usize;
+        let second_index: usize;
+        if let (Some(first_value), Some(second_value)) = (
+            page_html.find(FIST_INDEX_STRING),
+            page_html.find(r#"window.MTGO.decklists.type = "#)
+        ) {
+            first_index = first_value;
+            second_index = second_value;
+        }else {
+            panic!("Unable to find json in html document");
+        }
+        page_html = page_html[first_index + FIST_INDEX_STRING.len()..second_index - 6].to_string();
+        let end_decks_index: usize;
+        if let Some(value) = page_html.find("\"brackets\":") {
+            end_decks_index = value;
+        } else {
+            panic!("End decks index not found");
+        }
+        let raw_decks: Vec<&str> = page_html[..end_decks_index].split(r#""loginid":""#).collect();
+        println!("Request recived with: {:?} games", raw_decks.len() - 1);
+        let mut login_ids: Vec<&str> = Vec::new();
+        for raw_deck in &raw_decks {
+            let login_id_end_index: usize;
+            if let Some(value) = raw_deck.find("\"") {
+                login_id_end_index = value;
+            } else {
+               panic!("Value not found");
+            }
+            let login_id: &str = &raw_deck[..login_id_end_index];
+            login_ids.push(login_id);
+        }
+        const STANDIGS_KEY: &str = "standings";
+        match serde_json::from_str::<Value>(&page_html) {
+            Ok(parsed_data) => {
+                let standings: Vec<&Value>;
+                if let Some(value) = parsed_data[STANDIGS_KEY].as_array() {
+                    standings = Vec::from_iter(value);
+                } else {
+                    panic!("Unable to read key {:?} from json", STANDIGS_KEY);
+                }
+                let standings: Vec<&Value> = Vec::from_iter(standings);
+                let mut tmp_ranks: Vec<u64> = Vec::new();
+                for object in standings {
+                    const RANK_KEY: &str = "rank";
+                    let object_rank: &str;
+                    if let Value::String(value) = &object[RANK_KEY] {
+                        object_rank = value;
                     } else {
-                        panic!("End decks index not found");
+                        panic!("Unable to read key {:?} from json", RANK_KEY);
+                    }
+                    if let Ok(rank_value) = object_rank.parse::<u64>() {
+                        ranks.push(rank_value);
                     }
                 }
-            }
+                ranks.append(&mut tmp_ranks);
+            },
+            Err(error) => panic!("Unable to parse json: {:?}", error),
+        };
+        for deck_index in 1..raw_decks.len() {
+            html_decks.push(raw_decks[deck_index].to_string());
         }
     }
     println!("Html decks are: {:?}", html_decks.len());
@@ -285,7 +334,6 @@ fn main() {
     let mut tmp_lands_count_data: Vec<u8> = Vec::new();
     let mut tmp_creatures_count_data: Vec<u8> = Vec::new();
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
-    println!("{:?}, {:?}", html_decks.len(), ranks.len());
     for html_deck_index in 0..html_decks.len() {
         deck_position_less_than_9_data.push(ranks[html_deck_index] < 8);
         let html_cards: Vec<&str> =
@@ -298,143 +346,142 @@ fn main() {
         let mut has_green_mana: bool = false;
         let mut lands_count: u8 = 0;
         let mut creatures_count: u8 = 0;
+        const COLOR_TAG: &str = "COLOR_";
         for html_card in html_cards {
-            if html_card.contains("COLOR_WHITE") {
-                has_white_mana = true;
-            }
-            if html_card.contains("COLOR_BLUE") {
-                has_blue_mana = true;
-            }
-            if html_card.contains("COLOR_BLACK") {
-                has_black_mana = true;
-            }
-            if html_card.contains("COLOR_RED") {
-                has_red_mana = true;
-            }
-            if html_card.contains("COLOR_GREEN") {
-                has_green_mana = true;
-            }
+            has_white_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "WHITE"));
+            has_blue_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "BLUE"));
+            has_black_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "BLACK"));
+            has_red_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "RED"));
+            has_green_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "GREEN"));
+            lands_count += get_card_type_quantity();
             if html_card.contains("\"card_type\":\"LAND  \",") {
-                if let Some(first_index) = html_card.find("\"qty\":\"") {
-                    if let Some(second_index) = html_card.find("\",\"sideboard\"") {
-                        lands_count += match html_card[first_index + 7..second_index].parse() {
-                            Ok(value) => value,
-                            Err(e) => {
-                                println!("Not able to parse. {:?}", e);
-                                0
-                            }
-                        };
-                    }
+                let first_index: usize;
+                if let Some(value) = html_card.find("\"qty\":\"") {
+                    first_index = value;
+                } else {
+                    panic!("Unable to find first index for card_type: \"LAND\"");
+                }
+                let second_index: usize;
+                if let Some(value) = html_card.find("\",\"sideboard\"") {
+                    second_index = value;
+                } else {
+                    panic!("Unable to find second index for card_type: \"LAND\"");
+                }
+                match html_card[first_index + 7..second_index].parse::<u8>() {
+                    Ok(value) => lands_count += value,
+                    Err(e) => panic!("Not able to parse. {:?}", e),
                 }
             }
             if html_card.contains("\"card_type\":\"ISCREA\",") {
-                if let Some(first_index) = html_card.find("\"qty\":\"") {
-                    if let Some(second_index) = html_card.find("\",\"sideboard\"") {
-                        creatures_count += match html_card[first_index + 7..second_index].parse() {
-                            Ok(value) => value,
-                            Err(e) => {
-                                println!("Not able to parse. {:?}", e);
-                                0
-                            }
-                        };
-                    }
+                let first_index: usize;
+                if let Some(value) = html_card.find("\"qty\":\"") {
+                    first_index = value;
+                } else {
+                    panic!("Unable to find first index for card_type: \"ISCREA\"");
                 }
+                let second_index: usize;
+                if let Some(value) = html_card.find("\",\"sideboard\"") {
+                    second_index = value;
+                } else {
+                    panic!("Unable to find second index for card_type: \"LAND\"");
+                }
+                match html_card[first_index + 7..second_index].parse::<u8>() {
+                    Ok(value) => creatures_count += value,
+                    Err(e) => panic!("Not able to parse. {:?}", e),
                 }
             }
-            has_white_data.push(has_white_mana);
-            has_blue_data.push(has_blue_mana);
-            has_black_data.push(has_black_mana);
-            has_red_data.push(has_red_mana);
-            has_green_data.push(has_green_mana);
-            tmp_lands_count_data.push(lands_count);
-            tmp_creatures_count_data.push(creatures_count);
         }
+        has_white_data.push(has_white_mana);
+        has_blue_data.push(has_blue_mana);
+        has_black_data.push(has_black_mana);
+        has_red_data.push(has_red_mana);
+        has_green_data.push(has_green_mana);
+        tmp_lands_count_data.push(lands_count);
+        tmp_creatures_count_data.push(creatures_count);
+    }
+    let mut unique_lands_values: Vec<u8> = Vec::new();
+    for land_amount in &tmp_lands_count_data {
+        let mut contains_value: bool = false;
+        for unique_value in &unique_lands_values {
+            if *land_amount == *unique_value {
+                contains_value = true;
+                break;
+            }
+        }
+        if !contains_value {
+            unique_lands_values.push(*land_amount);
+        }
+    }
+    let mut unique_creatures_values: Vec<u8> = Vec::new();
+    for creatures_amount in &tmp_creatures_count_data {
+        let mut contains_value: bool = false;
+        for unique_value in &unique_creatures_values {
+            if *creatures_amount == *unique_value {
+                contains_value = true;
+                break;
+            }
+        }
+        if !contains_value {
+            unique_creatures_values.push(*creatures_amount);
+        }
+    }
 
-
-
-        let mut unique_lands_values: Vec<u8> = Vec::new();
+    println!("0:W, 1:U, 2:B, 3:R, 4:G");
+    println!("Unique lands values: {:?}", unique_lands_values);
+    println!("Unique creatures values: {:?}", unique_creatures_values);
+    let mut lands_count_data: Vec<Vec<bool>> = Vec::new();
+    for unique_value in unique_lands_values {
+        let mut unique_value_data: Vec<bool> = Vec::new();
         for land_amount in &tmp_lands_count_data {
-            let mut contains_value: bool = false;
-            for unique_value in &unique_lands_values {
-                if *land_amount == *unique_value {
-                    contains_value = true;
-                    break;
-                }
-            }
-            if !contains_value {
-                unique_lands_values.push(*land_amount);
-            }
+            let tmp: bool = *land_amount < unique_value;
+            unique_value_data.push(tmp);
         }
-        let mut unique_creatures_values: Vec<u8> = Vec::new();
+        lands_count_data.push(unique_value_data);
+    }
+    let mut creatures_count_data: Vec<Vec<bool>> = Vec::new();
+    for unique_value in unique_creatures_values {
+        let mut unique_value_data: Vec<bool> = Vec::new();
         for creatures_amount in &tmp_creatures_count_data {
-            let mut contains_value: bool = false;
-            for unique_value in &unique_creatures_values {
-                if *creatures_amount == *unique_value {
-                    contains_value = true;
-                    break;
-                }
-            }
-            if !contains_value {
-                unique_creatures_values.push(*creatures_amount);
-            }
+            let tmp: bool = *creatures_amount < unique_value;
+            unique_value_data.push(tmp);
         }
-
-        println!("0:W, 1:U, 2:B, 3:R, 4:G");
-        println!("Unique lands values: {:?}", unique_lands_values);
-        println!("Unique creatures values: {:?}", unique_creatures_values);
-        let mut lands_count_data: Vec<Vec<bool>> = Vec::new();
-        for unique_value in unique_lands_values {
-            let mut unique_value_data: Vec<bool> = Vec::new();
-            for land_amount in &tmp_lands_count_data {
-                let tmp: bool = *land_amount < unique_value;
-                unique_value_data.push(tmp);
-            }
-            lands_count_data.push(unique_value_data);
-        }
-        let mut creatures_count_data: Vec<Vec<bool>> = Vec::new();
-        for unique_value in unique_creatures_values {
-            let mut unique_value_data: Vec<bool> = Vec::new();
-            for creatures_amount in &tmp_creatures_count_data {
-                let tmp: bool = *creatures_amount < unique_value;
-                unique_value_data.push(tmp);
-            }
-            creatures_count_data.push(unique_value_data);
-        }
+        creatures_count_data.push(unique_value_data);
+    }
 
 
 
-        let training_percentage: f32 = 0.8;
-        let mut data_array_map: Vec<Vec<bool>> = Vec::from([
-            has_white_data[0..(has_white_data.len() as f32 * training_percentage) as usize].to_owned(),
-            has_blue_data[0..(has_blue_data.len() as f32 * training_percentage) as usize].to_owned(),
-            has_black_data[0..(has_black_data.len() as f32 * training_percentage) as usize].to_owned(),
-            has_red_data[0..(has_red_data.len() as f32 * training_percentage) as usize].to_owned(),
-            has_green_data[0..(has_green_data.len() as f32 * training_percentage) as usize].to_owned(),
-        ]);
-        data_array_map.append(&mut lands_count_data[0..][0..(lands_count_data.len() as f32 * training_percentage) as usize].to_vec());
-        data_array_map.append(&mut creatures_count_data[0..][0..(creatures_count_data.len() as f32 * training_percentage) as usize].to_vec());
-        let generated_nodes: Node = generate_nodes(
-            &Vec::from_iter(0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize),
-            &data_array_map,
-            &deck_position_less_than_9_data[0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize].to_vec(),
-        );
-        println!("Node: {:?}", generated_nodes);
-        let mut correct_predictions: usize = 0;
-        let mut total_predictions: usize = 0;
-        for index in (deck_position_less_than_9_data.len() as f32 * training_percentage) as usize..deck_position_less_than_9_data.len() - 1 {
-            total_predictions += 1;
-            let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
-            for land_data in &lands_count_data {
-                vector_data.push(land_data[index]);
-            }
-            for creature_data in &creatures_count_data {
-                vector_data.push(creature_data[index]);
-            }
-            let prediction: bool = evaluate_data(&generated_nodes, vector_data);
-            println!("The prediction for data is: {:?}", prediction);
-            if prediction == deck_position_less_than_9_data[index] {
-                correct_predictions += 1;
-            }
+    let training_percentage: f32 = 0.8;
+    let mut data_array_map: Vec<Vec<bool>> = Vec::from([
+        has_white_data[0..(has_white_data.len() as f32 * training_percentage) as usize].to_owned(),
+        has_blue_data[0..(has_blue_data.len() as f32 * training_percentage) as usize].to_owned(),
+        has_black_data[0..(has_black_data.len() as f32 * training_percentage) as usize].to_owned(),
+        has_red_data[0..(has_red_data.len() as f32 * training_percentage) as usize].to_owned(),
+        has_green_data[0..(has_green_data.len() as f32 * training_percentage) as usize].to_owned(),
+    ]);
+    data_array_map.append(&mut lands_count_data[0..][0..(lands_count_data.len() as f32 * training_percentage) as usize].to_vec());
+    data_array_map.append(&mut creatures_count_data[0..][0..(creatures_count_data.len() as f32 * training_percentage) as usize].to_vec());
+    let generated_nodes: Node = generate_nodes(
+        &Vec::from_iter(0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize),
+        &data_array_map,
+        &deck_position_less_than_9_data[0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize].to_vec(),
+    );
+    println!("Node: {:?}", generated_nodes);
+    let mut correct_predictions: usize = 0;
+    let mut total_predictions: usize = 0;
+    for index in (deck_position_less_than_9_data.len() as f32 * training_percentage) as usize..deck_position_less_than_9_data.len() - 1 {
+        total_predictions += 1;
+        let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
+        for land_data in &lands_count_data {
+            vector_data.push(land_data[index]);
         }
-        println!("Prediction %: {:?}\nCorect: {:?}\nTotal: {:?}", correct_predictions as f32 / total_predictions as f32 * 100.0, correct_predictions, total_predictions);
+        for creature_data in &creatures_count_data {
+            vector_data.push(creature_data[index]);
+        }
+        let prediction: bool = evaluate_data(&generated_nodes, vector_data);
+        println!("The prediction for data is: {:?}", prediction);
+        if prediction == deck_position_less_than_9_data[index] {
+            correct_predictions += 1;
+        }
+    }
+    println!("Prediction %: {:?}\nCorect: {:?}\nTotal: {:?}", correct_predictions as f32 / total_predictions as f32 * 100.0, correct_predictions, total_predictions);
 }
