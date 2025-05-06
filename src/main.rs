@@ -19,6 +19,36 @@ struct Node {
     prediction: Option<bool>,
 }
 
+fn get_data_values(target_data: &Vec<u8>, values: Vec<u8>) -> Vec<Vec<bool>> {
+    let mut lands_data: Vec<Vec<bool>> = Vec::new();
+    for unique_value in values {
+        let mut unique_value_data: Vec<bool> = Vec::new();
+        for target_value in target_data {
+            let tmp: bool = *target_value < unique_value;
+            unique_value_data.push(tmp);
+        }
+        lands_data.push(unique_value_data);
+    }
+    return lands_data;
+}
+
+fn get_unique_values(target: &Vec<u8>) -> Vec<u8> {
+    let mut tmp_vector: Vec<u8> = Vec::new();
+    for target_value in target {
+        let mut contains_value: bool = false;
+        for unique_value in &tmp_vector {
+            if *target_value == *unique_value {
+                contains_value = true;
+                break;
+            }
+        }
+        if !contains_value {
+            tmp_vector.push(*target_value);
+        }
+    }
+    return tmp_vector;
+}
+
 fn get_card_type_quantity(html_card: &str, card_type: &str) -> Result<Option<u8>, &'static str> {
     let amount: u8;
     if html_card.contains(&format!("\"card_type\":\"{}\",", card_type)) {
@@ -206,7 +236,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=9ABF880853A1867BA4B85ADE796E49B5.lvs-foyert1-3409";
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=9ABF880853A1867BA4B85ADE796E49B5.lvs-foyert1-3409"; 
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
@@ -331,8 +361,8 @@ fn main() {
     let mut has_black_data: Vec<bool> = Vec::new();
     let mut has_red_data: Vec<bool> = Vec::new();
     let mut has_green_data: Vec<bool> = Vec::new();
-    let mut tmp_lands_count_data: Vec<u8> = Vec::new();
-    let mut tmp_creatures_count_data: Vec<u8> = Vec::new();
+    let mut lands_count_data: Vec<u8> = Vec::new();
+    let mut creatures_count_data: Vec<u8> = Vec::new();
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
     for html_deck_index in 0..html_decks.len() {
         deck_position_less_than_9_data.push(ranks[html_deck_index] < 8);
@@ -353,42 +383,15 @@ fn main() {
             has_black_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "BLACK"));
             has_red_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "RED"));
             has_green_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "GREEN"));
-            lands_count += get_card_type_quantity();
-            if html_card.contains("\"card_type\":\"LAND  \",") {
-                let first_index: usize;
-                if let Some(value) = html_card.find("\"qty\":\"") {
-                    first_index = value;
-                } else {
-                    panic!("Unable to find first index for card_type: \"LAND\"");
-                }
-                let second_index: usize;
-                if let Some(value) = html_card.find("\",\"sideboard\"") {
-                    second_index = value;
-                } else {
-                    panic!("Unable to find second index for card_type: \"LAND\"");
-                }
-                match html_card[first_index + 7..second_index].parse::<u8>() {
-                    Ok(value) => lands_count += value,
-                    Err(e) => panic!("Not able to parse. {:?}", e),
-                }
+            match get_card_type_quantity(html_card, "LAND  ") {
+                Ok(Some(value)) => lands_count += value,
+                Err(error) => panic!("{}", error),
+                _ => (),
             }
-            if html_card.contains("\"card_type\":\"ISCREA\",") {
-                let first_index: usize;
-                if let Some(value) = html_card.find("\"qty\":\"") {
-                    first_index = value;
-                } else {
-                    panic!("Unable to find first index for card_type: \"ISCREA\"");
-                }
-                let second_index: usize;
-                if let Some(value) = html_card.find("\",\"sideboard\"") {
-                    second_index = value;
-                } else {
-                    panic!("Unable to find second index for card_type: \"LAND\"");
-                }
-                match html_card[first_index + 7..second_index].parse::<u8>() {
-                    Ok(value) => creatures_count += value,
-                    Err(e) => panic!("Not able to parse. {:?}", e),
-                }
+            match get_card_type_quantity(html_card, "ISCREA") {
+                Ok(Some(value)) => creatures_count += value,
+                Err(error) => panic!("{}", error),
+                _ => (),
             }
         }
         has_white_data.push(has_white_mana);
@@ -396,85 +399,42 @@ fn main() {
         has_black_data.push(has_black_mana);
         has_red_data.push(has_red_mana);
         has_green_data.push(has_green_mana);
-        tmp_lands_count_data.push(lands_count);
-        tmp_creatures_count_data.push(creatures_count);
+        lands_count_data.push(lands_count);
+        creatures_count_data.push(creatures_count);
     }
-    let mut unique_lands_values: Vec<u8> = Vec::new();
-    for land_amount in &tmp_lands_count_data {
-        let mut contains_value: bool = false;
-        for unique_value in &unique_lands_values {
-            if *land_amount == *unique_value {
-                contains_value = true;
-                break;
-            }
-        }
-        if !contains_value {
-            unique_lands_values.push(*land_amount);
-        }
-    }
-    let mut unique_creatures_values: Vec<u8> = Vec::new();
-    for creatures_amount in &tmp_creatures_count_data {
-        let mut contains_value: bool = false;
-        for unique_value in &unique_creatures_values {
-            if *creatures_amount == *unique_value {
-                contains_value = true;
-                break;
-            }
-        }
-        if !contains_value {
-            unique_creatures_values.push(*creatures_amount);
-        }
-    }
-
+    let unique_lands_values: Vec<u8> = get_unique_values(&lands_count_data);
+    let unique_creatures_values: Vec<u8> = get_unique_values(&creatures_count_data);
     println!("0:W, 1:U, 2:B, 3:R, 4:G");
     println!("Unique lands values: {:?}", unique_lands_values);
     println!("Unique creatures values: {:?}", unique_creatures_values);
-    let mut lands_count_data: Vec<Vec<bool>> = Vec::new();
-    for unique_value in unique_lands_values {
-        let mut unique_value_data: Vec<bool> = Vec::new();
-        for land_amount in &tmp_lands_count_data {
-            let tmp: bool = *land_amount < unique_value;
-            unique_value_data.push(tmp);
-        }
-        lands_count_data.push(unique_value_data);
-    }
-    let mut creatures_count_data: Vec<Vec<bool>> = Vec::new();
-    for unique_value in unique_creatures_values {
-        let mut unique_value_data: Vec<bool> = Vec::new();
-        for creatures_amount in &tmp_creatures_count_data {
-            let tmp: bool = *creatures_amount < unique_value;
-            unique_value_data.push(tmp);
-        }
-        creatures_count_data.push(unique_value_data);
-    }
-
-
-
-    let training_percentage: f32 = 0.8;
+    let mut lands_data: Vec<Vec<bool>> = get_data_values(&lands_count_data, unique_lands_values);
+    let mut creatures_data: Vec<Vec<bool>> = get_data_values(&creatures_count_data, unique_creatures_values);
+    const TRAINING_PERCENTAGE: f32 = 0.8;
+    let max_training_index: usize = (has_white_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
     let mut data_array_map: Vec<Vec<bool>> = Vec::from([
-        has_white_data[0..(has_white_data.len() as f32 * training_percentage) as usize].to_owned(),
-        has_blue_data[0..(has_blue_data.len() as f32 * training_percentage) as usize].to_owned(),
-        has_black_data[0..(has_black_data.len() as f32 * training_percentage) as usize].to_owned(),
-        has_red_data[0..(has_red_data.len() as f32 * training_percentage) as usize].to_owned(),
-        has_green_data[0..(has_green_data.len() as f32 * training_percentage) as usize].to_owned(),
+        has_white_data[0..max_training_index].to_owned(),
+        has_blue_data[0..max_training_index].to_owned(),
+        has_black_data[0..max_training_index].to_owned(),
+        has_red_data[0..max_training_index].to_owned(),
+        has_green_data[0..max_training_index].to_owned(),
     ]);
-    data_array_map.append(&mut lands_count_data[0..][0..(lands_count_data.len() as f32 * training_percentage) as usize].to_vec());
-    data_array_map.append(&mut creatures_count_data[0..][0..(creatures_count_data.len() as f32 * training_percentage) as usize].to_vec());
+    data_array_map.append(&mut lands_data[0..][0..max_training_index].to_vec());
+    data_array_map.append(&mut creatures_data[0..][0..max_training_index].to_vec());
     let generated_nodes: Node = generate_nodes(
-        &Vec::from_iter(0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize),
+        &Vec::from_iter(0..max_training_index),
         &data_array_map,
-        &deck_position_less_than_9_data[0..(deck_position_less_than_9_data.len() as f32 * training_percentage) as usize].to_vec(),
+        &deck_position_less_than_9_data[0..max_training_index].to_vec(),
     );
     println!("Node: {:?}", generated_nodes);
     let mut correct_predictions: usize = 0;
     let mut total_predictions: usize = 0;
-    for index in (deck_position_less_than_9_data.len() as f32 * training_percentage) as usize..deck_position_less_than_9_data.len() - 1 {
+    for index in (deck_position_less_than_9_data.len() as f32 * TRAINING_PERCENTAGE) as usize..deck_position_less_than_9_data.len() - 1 {
         total_predictions += 1;
         let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
-        for land_data in &lands_count_data {
+        for land_data in &lands_data {
             vector_data.push(land_data[index]);
         }
-        for creature_data in &creatures_count_data {
+        for creature_data in &creatures_data {
             vector_data.push(creature_data[index]);
         }
         let prediction: bool = evaluate_data(&generated_nodes, vector_data);
