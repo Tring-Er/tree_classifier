@@ -78,33 +78,11 @@ fn get_card_type_quantity(html_card: &str, card_type: &str) -> Result<Option<u8>
 fn correctness_score(
     number_of_correct: usize,
     number_of_total: usize
-) -> Result<f32, String> {
-    if number_of_total == 0 {
-        return Err(
-            String::from(
-                "correctness_score argument \"number_of_total\" cannot be 0"
-                )
-            );
-    }
-    return Ok(f32::powi(number_of_correct as f32 / number_of_total as f32, 2));
-}
-
-fn gini_impurity(
-    true_amounts: usize,
-    false_amounts: usize,
 ) -> f32 {
-    let total_number_in_branch: usize = true_amounts + false_amounts;
-    let left_correctness_score: f32;
-    match correctness_score(true_amounts, total_number_in_branch) {
-        Ok(value) => left_correctness_score = value,
-        Err(_) => return 1.0,
-    };
-    let right_corerctness_score: f32;
-    match correctness_score(false_amounts, total_number_in_branch) {
-        Ok(value) => right_corerctness_score = value,
-        Err(_) => return 1.0,
-    };
-    return 1.0 - left_correctness_score - right_corerctness_score;
+    if number_of_total == 0 {
+        return 1.0;
+    }
+    return f32::powi(number_of_correct as f32 / number_of_total as f32, 2);
 }
 
 fn evaluate_data(tree: &Node, data: Vec<bool>) -> bool {
@@ -127,10 +105,21 @@ fn evaluate_data(tree: &Node, data: Vec<bool>) -> bool {
     return false;
 }
 
-fn true_false_amounts(
-    target: &Vec<bool>,
-    indexes: &Vec<usize>
-) -> (usize, usize) {
+fn leaf_node(
+    true_amounts: usize,
+    false_amounts: usize,
+    gini_impurity: f32
+) -> Node {
+    return Node {
+        gini_impurity: Some(gini_impurity),
+        feature_index: None,
+        on_true: None,
+        on_false: None,
+        prediction: Some(true_amounts >= false_amounts),
+    };
+}
+
+fn get_node_gini_impurity(target: &Vec<bool>, indexes: &Vec<usize>) -> (f32, usize, usize) {
     let mut true_amounts: usize = 0;
     let mut false_amounts: usize = 0;
     for index in indexes {
@@ -140,27 +129,11 @@ fn true_false_amounts(
             false_amounts += 1;
         }
     }
-    return (true_amounts, false_amounts);
-}
-
-fn leaf_node(
-    true_amounts: usize,
-    false_amounts: usize,
-    gini_impurity: f32
-) -> Node {
-    let is_true: bool;
-    if true_amounts < false_amounts {
-        is_true = false;
-    } else {
-        is_true = true;
-    }
-    return Node {
-        gini_impurity: Some(gini_impurity),
-        feature_index: None,
-        on_true: None,
-        on_false: None,
-        prediction: Some(is_true),
-    };
+    let total_number_in_branch: usize = true_amounts + false_amounts;
+    let left_correctness_score: f32 = correctness_score(true_amounts, total_number_in_branch);
+    let right_corerctness_score: f32 = correctness_score(false_amounts, total_number_in_branch);
+    let node_gini_impurity: f32 = 1.0 - left_correctness_score - right_corerctness_score;
+    return (node_gini_impurity, true_amounts, false_amounts);
 }
 
 fn generate_nodes(
@@ -168,8 +141,7 @@ fn generate_nodes(
     data: &Vec<Vec<bool>>,
     target: &Vec<bool>,
 ) -> Node {
-    let (number_of_true, number_of_false) = true_false_amounts(target, indexes);
-    let node_gini_impurity: f32 = gini_impurity(number_of_true, number_of_false);
+    let (node_gini_impurity, number_of_true, number_of_false) = get_node_gini_impurity(target, indexes);
     if node_gini_impurity == 0.0 {
         return leaf_node(number_of_true, number_of_false, node_gini_impurity);
     }
@@ -187,19 +159,8 @@ fn generate_nodes(
                 false_indexes.push(*data_index);
             }
         }
-        let (true_amounts, false_amounts) = true_false_amounts(
-            target,
-            &true_indexes
-        );
-        let true_gini_impurity: f32 = gini_impurity(true_amounts, false_amounts);
-        let (true_amounts, false_amounts) = true_false_amounts(
-            target,
-            &false_indexes,
-        );
-        let false_gini_impurity: f32 = gini_impurity(
-            true_amounts,
-            false_amounts
-        );
+        let (true_gini_impurity, _, _) = get_node_gini_impurity(target, &true_indexes);
+        let (false_gini_impurity, _, _) = get_node_gini_impurity(target, &false_indexes);
         let total_gini_impurity: f32 = 
             (
                 true_gini_impurity * true_indexes.len() as f32 +
@@ -236,7 +197,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=9ABF880853A1867BA4B85ADE796E49B5.lvs-foyert1-3409"; 
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=475A63AF21132F5679F86F0CD272D154.lvs-foyert2-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
