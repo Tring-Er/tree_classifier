@@ -368,8 +368,8 @@ fn main() {
     println!("0:W, 1:U, 2:B, 3:R, 4:G");
     println!("Unique lands values: {:?}", unique_lands_values);
     println!("Unique creatures values: {:?}", unique_creatures_values);
-    let mut lands_data: Vec<Vec<bool>> = get_data_values(&lands_count_data, unique_lands_values);
-    let mut creatures_data: Vec<Vec<bool>> = get_data_values(&creatures_count_data, unique_creatures_values);
+    let lands_data: Vec<Vec<bool>> = get_data_values(&lands_count_data, unique_lands_values);
+    let creatures_data: Vec<Vec<bool>> = get_data_values(&creatures_count_data, unique_creatures_values);
     const TRAINING_PERCENTAGE: f32 = 0.8;
     let max_training_index: usize = (has_white_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
     let mut data_array_map: Vec<Vec<bool>> = Vec::from([
@@ -385,7 +385,7 @@ fn main() {
         for land_data_index in 0..max_training_index {
             lands_data.push(lands_value[land_data_index]);
         }
-        training_lands_data.push(lands_data);;
+        training_lands_data.push(lands_data);
     }
     data_array_map.append(&mut training_lands_data);
     let mut training_creatures_data: Vec<Vec<bool>> = Vec::new();
