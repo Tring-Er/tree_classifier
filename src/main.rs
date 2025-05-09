@@ -197,7 +197,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=475A63AF21132F5679F86F0CD272D154.lvs-foyert2-3409";
+    const COOKIES: &str = "JSESSIONID=CD5FFC6FBFCC3D1847DD80B374248FCC.lvs-foyert2-3409; locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
