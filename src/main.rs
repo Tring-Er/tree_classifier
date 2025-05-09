@@ -379,8 +379,24 @@ fn main() {
         has_red_data[0..max_training_index].to_owned(),
         has_green_data[0..max_training_index].to_owned(),
     ]);
-    data_array_map.append(&mut lands_data[0..][0..max_training_index].to_vec());
-    data_array_map.append(&mut creatures_data[0..][0..max_training_index].to_vec());
+    let mut training_lands_data: Vec<Vec<bool>> = Vec::new();
+    for lands_value in &lands_data {
+        let mut lands_data: Vec<bool> = Vec::new();
+        for land_data_index in 0..max_training_index {
+            lands_data.push(lands_value[land_data_index]);
+        }
+        training_lands_data.push(lands_data);;
+    }
+    data_array_map.append(&mut training_lands_data);
+    let mut training_creatures_data: Vec<Vec<bool>> = Vec::new();
+    for creatures_vector in &creatures_data {
+        let mut creatures_data: Vec<bool> = Vec::new();
+        for creature_data_index in 0..creatures_vector.len() {
+            creatures_data.push(creatures_vector[creature_data_index]);
+        }
+        training_creatures_data.push(creatures_data);
+    }
+    data_array_map.append(&mut training_creatures_data);
     let generated_nodes: Node = generate_nodes(
         &Vec::from_iter(0..max_training_index),
         &data_array_map,
