@@ -1,7 +1,8 @@
 /*
- * Version without lands = 76.1904%
- * Version with lands = 77.7778%
- * Version with creatures = 63.4920%
+ * N of decks = 320
+ * Version without lands = 78.125%
+ * Version with lands = 78.125%
+ * Version with creatures = 75%
  */
 
 use std::{thread, time::Duration};
@@ -17,6 +18,18 @@ struct Node {
     on_true: Option<Box<Node>>,
     on_false: Option<Box<Node>>,
     prediction: Option<bool>,
+}
+
+fn get_training_data_from_matrix(original_data: &Vec<Vec<bool>>, max_training_index: usize) -> Vec<Vec<bool>> {
+    let mut training_data: Vec<Vec<bool>> = Vec::new();
+    for data_values in original_data {
+        let mut data_vector: Vec<bool> = Vec::new();
+        for data_index in 0..max_training_index {
+            data_vector.push(data_values[data_index]);
+        }
+        training_data.push(data_vector);
+    }
+    return training_data;
 }
 
 fn get_data_values(target_data: &Vec<u8>, values: Vec<u8>) -> Vec<Vec<bool>> {
@@ -197,7 +210,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "JSESSIONID=CD5FFC6FBFCC3D1847DD80B374248FCC.lvs-foyert2-3409; locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait";
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=32EE32C537941AD0B549263E82FEEBA3.lvs-foyert2-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
@@ -371,7 +384,8 @@ fn main() {
     let lands_data: Vec<Vec<bool>> = get_data_values(&lands_count_data, unique_lands_values);
     let creatures_data: Vec<Vec<bool>> = get_data_values(&creatures_count_data, unique_creatures_values);
     const TRAINING_PERCENTAGE: f32 = 0.8;
-    let max_training_index: usize = (has_white_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
+    let max_training_index: usize = (deck_position_less_than_9_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
+    println!("N of training decks: {:?}", max_training_index);
     let mut data_array_map: Vec<Vec<bool>> = Vec::from([
         has_white_data[0..max_training_index].to_owned(),
         has_blue_data[0..max_training_index].to_owned(),
@@ -379,24 +393,8 @@ fn main() {
         has_red_data[0..max_training_index].to_owned(),
         has_green_data[0..max_training_index].to_owned(),
     ]);
-    let mut training_lands_data: Vec<Vec<bool>> = Vec::new();
-    for lands_value in &lands_data {
-        let mut lands_data: Vec<bool> = Vec::new();
-        for land_data_index in 0..max_training_index {
-            lands_data.push(lands_value[land_data_index]);
-        }
-        training_lands_data.push(lands_data);
-    }
-    data_array_map.append(&mut training_lands_data);
-    let mut training_creatures_data: Vec<Vec<bool>> = Vec::new();
-    for creatures_vector in &creatures_data {
-        let mut creatures_data: Vec<bool> = Vec::new();
-        for creature_data_index in 0..creatures_vector.len() {
-            creatures_data.push(creatures_vector[creature_data_index]);
-        }
-        training_creatures_data.push(creatures_data);
-    }
-    data_array_map.append(&mut training_creatures_data);
+    data_array_map.append(&mut get_training_data_from_matrix(&lands_data, max_training_index));
+    data_array_map.append(&mut get_training_data_from_matrix(&creatures_data, max_training_index));
     let generated_nodes: Node = generate_nodes(
         &Vec::from_iter(0..max_training_index),
         &data_array_map,
@@ -405,7 +403,7 @@ fn main() {
     println!("Node: {:?}", generated_nodes);
     let mut correct_predictions: usize = 0;
     let mut total_predictions: usize = 0;
-    for index in (deck_position_less_than_9_data.len() as f32 * TRAINING_PERCENTAGE) as usize..deck_position_less_than_9_data.len() - 1 {
+    for index in max_training_index..deck_position_less_than_9_data.len() {
         total_predictions += 1;
         let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
         for land_data in &lands_data {
