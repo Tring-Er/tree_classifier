@@ -1,8 +1,8 @@
 /*
- * N of decks = 320
+ * N of decks = 480
  * Version without lands = 78.125%
- * Version with lands = 78.125%
- * Version with creatures = 75%
+ * Version with lands = 80.20833%
+ * Version with creatures = 69.79167%
  */
 
 use std::{thread, time::Duration};
@@ -210,28 +210,33 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=32EE32C537941AD0B549263E82FEEBA3.lvs-foyert2-3409";
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=CAFF9B8D9DB292DD8BD1B9506A160362.lvs-foyert1-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
-    let mtgo_uri: String = format!("https://{}/decklist/pauper-challenge-32-2025-04-", HOST); 
+    let mtgo_uri: String = format!("https://{}/decklist/pauper-challenge-32-2025-", HOST); 
     let mut urls: Vec<String> = Vec::new();
-    const URL_QUERIES: [&str; 10] = [
-        "0412763152",
-        "0512763169",
-        "0612763187",
-        "1112765765",
-        "1212765782",
-        "1812769888",
-        "1912769905",
-        "2012769922",
-        "2512772646",
-        "2612772667",
-    ];
-    for url_query in URL_QUERIES {
+    let url_queries: Vec<&str> = Vec::from([
+        "04-0412763152",
+        "04-0512763169",
+        "04-0612763187",
+        "04-1112765765",
+        "04-1212765782",
+        "04-1812769888",
+        "04-1912769905",
+        "04-2012769922",
+        "04-2512772646",
+        "04-2612772667",
+        "04-2712772689",
+        "05-0212774478",
+        "05-0312774499",
+        "05-0412774521",
+        "05-0912777329",
+    ]);
+    for url_query in &url_queries {
         urls.push(format!("{}{}", mtgo_uri, url_query));
     }
-    for url_index in 0..URL_QUERIES.len() {
+    for url_index in 0..url_queries.len() {
         let url: &str = &urls[url_index];
         println!("Requesting url: {:?}", url);
         thread::sleep(Duration::from_secs(7));
