@@ -359,6 +359,10 @@ fn main() {
     let mut has_green_data: Vec<bool> = Vec::new();
     let mut lands_count_data: Vec<u8> = Vec::new();
     let mut creatures_count_data: Vec<u8> = Vec::new();
+    let mut instants_count_data: Vec<u8> = Vec::new();
+    let mut sorceries_count_data: Vec<u8> = Vec::new();
+    let mut artifacts_count_data: Vec<u8> = Vec::new();
+    let mut enchantments_count_data: Vec<u8> = Vec::new();
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
     for html_deck_index in 0..html_decks.len() {
         deck_position_less_than_9_data.push(ranks[html_deck_index] < 8);
@@ -372,6 +376,10 @@ fn main() {
         let mut has_green_mana: bool = false;
         let mut lands_count: u8 = 0;
         let mut creatures_count: u8 = 0;
+        let mut instants_count: u8 = 0;
+        let mut sorceries_count: u8 = 0;
+        let mut artifacts_count: u8 = 0;
+        let mut enchantments_count: u8 = 0;
         const COLOR_TAG: &str = "COLOR_";
         for html_card in html_cards {
             has_white_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "WHITE"));
@@ -389,6 +397,26 @@ fn main() {
                 Err(error) => panic!("{}", error),
                 _ => (),
             }
+            match get_card_type_quantity(html_card, "INSTNT") {
+                Ok(Some(value)) => instants_count += value,
+                Err(error) => panic!("{}", error),
+                _ => (),
+            }
+            match get_card_type_quantity(html_card, "SORCRY") {
+                Ok(Some(value)) => sorceries_count += value,
+                Err(error) => panic!("{}", error),
+                _ => (),
+            }
+            match get_card_type_quantity(html_card, "ARTFCT") {
+                Ok(Some(value)) => artifacts_count += value,
+                Err(error) => panic!("{}", error),
+                _ => (),
+            }
+            match get_card_type_quantity(html_card, "ENCHMT") {
+                Ok(Some(value)) => enchantments_count += value,
+                Err(error) => panic!("{}", error),
+                _ => (),
+            }
         }
         has_white_data.push(has_white_mana);
         has_blue_data.push(has_blue_mana);
@@ -397,14 +425,30 @@ fn main() {
         has_green_data.push(has_green_mana);
         lands_count_data.push(lands_count);
         creatures_count_data.push(creatures_count);
+        instants_count_data.push(instants_count);
+        sorceries_count_data.push(sorceries_count);
+        artifacts_count_data.push(artifacts_count);
+        enchantments_count_data.push(enchantments_count);
     }
     let unique_lands_values: Vec<u8> = get_unique_values(&lands_count_data);
     let unique_creatures_values: Vec<u8> = get_unique_values(&creatures_count_data);
+    let unique_instants_values: Vec<u8> = get_unique_values(&instants_count_data);
+    let unique_sorceries_values: Vec<u8> = get_unique_values(&sorceries_count_data);
+    let unique_artifacts_values: Vec<u8> = get_unique_values(&artifacts_count_data);
+    let unique_enchantment_values: Vec<u8> = get_unique_values(&enchantments_count_data);
     println!("0:W, 1:U, 2:B, 3:R, 4:G");
     println!("Unique lands values: {:?}", unique_lands_values);
     println!("Unique creatures values: {:?}", unique_creatures_values);
+    println!("Unique instants values: {:?}", unique_instants_values);
+    println!("Unique sorceries values: {:?}", unique_sorceries_values);
+    println!("Unique artifacts values: {:?}", unique_artifacts_values);
+    println!("Unique enchantments values: {:?}", unique_enchantment_values);
     let lands_data: Vec<Vec<bool>> = get_data_values(&lands_count_data, unique_lands_values);
     let creatures_data: Vec<Vec<bool>> = get_data_values(&creatures_count_data, unique_creatures_values);
+    let instants_data: Vec<Vec<bool>> = get_data_values(&instants_count_data, unique_instants_values);
+    let sorceries_data: Vec<Vec<bool>> = get_data_values(&sorceries_count_data, unique_sorceries_values);
+    let artifacts_data: Vec<Vec<bool>> = get_data_values(&artifacts_count_data, unique_artifacts_values);
+    let enchantments_data: Vec<Vec<bool>> = get_data_values(&enchantments_count_data, unique_enchantment_values);
     const TRAINING_PERCENTAGE: f32 = 0.8;
     let max_training_index: usize = (deck_position_less_than_9_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
     println!("N of training decks: {:?}", max_training_index);
@@ -417,6 +461,10 @@ fn main() {
     ]);
     data_array_map.append(&mut get_training_data_from_matrix(&lands_data, max_training_index));
     data_array_map.append(&mut get_training_data_from_matrix(&creatures_data, max_training_index));
+    data_array_map.append(&mut get_training_data_from_matrix(&instants_data, max_training_index));
+    data_array_map.append(&mut get_training_data_from_matrix(&sorceries_data, max_training_index));
+    data_array_map.append(&mut get_training_data_from_matrix(&artifacts_data, max_training_index));
+    data_array_map.append(&mut get_training_data_from_matrix(&enchantments_data, max_training_index));
     let generated_nodes: Node = generate_nodes(
         &Vec::from_iter(0..max_training_index),
         &data_array_map,
@@ -433,6 +481,18 @@ fn main() {
         }
         for creature_data in &creatures_data {
             vector_data.push(creature_data[index]);
+        }
+        for instant_data in &instants_data {
+            vector_data.push(instant_data[index]);
+        }
+        for sorcery_data in &sorceries_data {
+            vector_data.push(sorcery_data[index]);
+        }
+        for artifact_data in &artifacts_data {
+            vector_data.push(artifact_data[index]);
+        }
+        for enchantment_data in &enchantments_data {
+            vector_data.push(enchantment_data[index]);
         }
         let prediction: bool = evaluate_data(&generated_nodes, vector_data);
         println!("The prediction for data is: {:?}", prediction);
