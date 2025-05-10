@@ -210,7 +210,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=CAFF9B8D9DB292DD8BD1B9506A160362.lvs-foyert1-3409";
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=DAD72B351762EC125A1B443CDBEAC070.lvs-foyert2-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
@@ -241,49 +241,63 @@ fn main() {
         println!("Requesting url: {:?}", url);
         thread::sleep(Duration::from_secs(7));
         let client: Client = Client::new();
-        let result_response: Result<Response, reqwest::Error> = client
-            .get(url)
-            .header("Host", HOST)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
-            .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-            .header("Accept-Language", "en-Us,en;q=0.5")
-            .header("Accept-Encoding", "gzip, deflate, br, zstd")
-            .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
-            .header("Sec-GPC", "1")
-            .header("Connection", "keep-alive")
-            .header("Cookie", COOKIES)
-            .header("Upgrade-Insecure-Requests", "1")
-            .header("Sec-Fetch-Dest", "document")
-            .header("Sec-Fetch-Mode", "navigate")
-            .header("Sec-Fetch-Site", "same-origin")
-            .header("Sec-Fetch-User", "?1")
-            .header("Priority", "u=0, i")
-            .send();
-        let response: Response;
-        if let Ok(value) = result_response {
-            response = value;
-        } else {
-            panic!("Unable to get the response");
+        const MAX_TRIES: usize = 5;
+        let mut page_html: String = String::new();
+        for try_value in 1..=MAX_TRIES {
+            println!("Try {:?}", try_value);
+            let result_response: Result<Response, reqwest::Error> = client
+                .get(url)
+                .timeout(Duration::from_secs(60))
+                .header("Host", HOST)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
+                .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "en-Us,en;q=0.5")
+                .header("Accept-Encoding", "gzip, deflate, br, zstd")
+                .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
+                .header("Sec-GPC", "1")
+                .header("Connection", "keep-alive")
+                .header("Cookie", COOKIES)
+                .header("Upgrade-Insecure-Requests", "1")
+                .header("Sec-Fetch-Dest", "document")
+                .header("Sec-Fetch-Mode", "navigate")
+                .header("Sec-Fetch-Site", "same-origin")
+                .header("Sec-Fetch-User", "?1")
+                .header("Priority", "u=0, i")
+                .send();
+            let response: Response;
+            match result_response {
+                Ok(value) => response = value,
+                Err(error) => {
+                    println!("Unable to get the response: {:?}", error);
+                    continue;
+                }
+            }
+            let raw_page_html: String;
+            let response_text = response.text();
+            match response_text {
+                Ok(value) => raw_page_html = value,
+                Err(error) => {
+                    println!("Unable to find text of the response: {:?}", error);
+                    continue;
+                }
+            }
+            const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
+            let first_index: usize;
+            let second_index: usize;
+            if let (Some(first_value), Some(second_value)) = (
+                raw_page_html.find(FIST_INDEX_STRING),
+                raw_page_html.find(r#"window.MTGO.decklists.type = "#)
+            ) {
+                first_index = first_value;
+                second_index = second_value;
+            } else {
+                println!("{:?}", raw_page_html);
+                println!("Unable to find json in html document");
+                continue;
+            }
+            page_html = raw_page_html[first_index + FIST_INDEX_STRING.len()..second_index - 6].to_string();
+            break;
         }
-        let mut page_html: String;
-        if let Ok(value) = response.text() {
-            page_html = value;
-        } else {
-            panic!("Unable to find text of the response");
-        }
-        const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
-        let first_index: usize;
-        let second_index: usize;
-        if let (Some(first_value), Some(second_value)) = (
-            page_html.find(FIST_INDEX_STRING),
-            page_html.find(r#"window.MTGO.decklists.type = "#)
-        ) {
-            first_index = first_value;
-            second_index = second_value;
-        }else {
-            panic!("Unable to find json in html document");
-        }
-        page_html = page_html[first_index + FIST_INDEX_STRING.len()..second_index - 6].to_string();
         let end_decks_index: usize;
         if let Some(value) = page_html.find("\"brackets\":") {
             end_decks_index = value;
@@ -292,6 +306,9 @@ fn main() {
         }
         let raw_decks: Vec<&str> = page_html[..end_decks_index].split(r#""loginid":""#).collect();
         println!("Request recived with: {:?} games", raw_decks.len() - 1);
+        if raw_decks.len() - 1 != 32 {
+            panic!("N of decks not 32: {:?}", page_html);
+        }
         let mut login_ids: Vec<&str> = Vec::new();
         for raw_deck in &raw_decks {
             let login_id_end_index: usize;
