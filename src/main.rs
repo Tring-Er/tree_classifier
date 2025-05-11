@@ -1,8 +1,13 @@
 /*
  * N of decks = 480
+ * Version with everything = 62.5%
  * Version without lands = 78.125%
  * Version with lands = 80.20833%
- * Version with creatures = 69.79167%
+ * Version with creatures = 77.08333%
+ * Version with instants = 67.70833%
+ * Version with sorceries = 64.58333%
+ * Version with artifacts = 78.125%
+ * Version with enchantments = 77.08333%
  */
 
 use std::{thread, time::Duration};
@@ -32,12 +37,12 @@ fn get_training_data_from_matrix(original_data: &Vec<Vec<bool>>, max_training_in
     return training_data;
 }
 
-fn get_data_values(target_data: &Vec<u8>, values: Vec<u8>) -> Vec<Vec<bool>> {
+fn get_data_values(target_data: &Vec<u8>, values: Vec<f32>) -> Vec<Vec<bool>> {
     let mut lands_data: Vec<Vec<bool>> = Vec::new();
     for unique_value in values {
         let mut unique_value_data: Vec<bool> = Vec::new();
         for target_value in target_data {
-            let tmp: bool = *target_value < unique_value;
+            let tmp: bool = (*target_value as f32) < unique_value;
             unique_value_data.push(tmp);
         }
         lands_data.push(unique_value_data);
@@ -45,7 +50,7 @@ fn get_data_values(target_data: &Vec<u8>, values: Vec<u8>) -> Vec<Vec<bool>> {
     return lands_data;
 }
 
-fn get_unique_values(target: &Vec<u8>) -> Vec<u8> {
+fn get_feature_values(target: &Vec<u8>) -> Vec<f32> {
     let mut tmp_vector: Vec<u8> = Vec::new();
     for target_value in target {
         let mut contains_value: bool = false;
@@ -59,7 +64,13 @@ fn get_unique_values(target: &Vec<u8>) -> Vec<u8> {
             tmp_vector.push(*target_value);
         }
     }
-    return tmp_vector;
+    tmp_vector.sort();
+    let mut final_vector: Vec<f32> = Vec::new();
+    for vector_index in 1..tmp_vector.len() {
+        let value: f32 = (tmp_vector[vector_index - 1] as f32 + tmp_vector[vector_index] as f32) / 2.0;
+        final_vector.push(value);
+    }
+    return final_vector;
 }
 
 fn get_card_type_quantity(html_card: &str, card_type: &str) -> Result<Option<u8>, &'static str> {
@@ -153,9 +164,10 @@ fn generate_nodes(
     indexes: &Vec<usize>,
     data: &Vec<Vec<bool>>,
     target: &Vec<bool>,
+    cut: usize,
 ) -> Node {
     let (node_gini_impurity, number_of_true, number_of_false) = get_node_gini_impurity(target, indexes);
-    if node_gini_impurity == 0.0 {
+    if node_gini_impurity == 0.0 || number_of_true + number_of_false <= cut {
         return leaf_node(number_of_true, number_of_false, node_gini_impurity);
     }
     let mut smaller_gini: f32 = 1.0;
@@ -189,16 +201,8 @@ fn generate_nodes(
     if f32::abs(smaller_gini - node_gini_impurity) <= 0.000001 {
         return leaf_node(number_of_true, number_of_false, node_gini_impurity);
     }
-    let on_true_node: Node = generate_nodes(
-        &on_smaller_true_indexes,
-        data,
-        target
-    );
-    let on_false_node: Node = generate_nodes(
-        &on_smaller_false_indexes,
-        data,
-        target
-    );
+    let on_true_node: Node = generate_nodes(&on_smaller_true_indexes, data, target, cut);
+    let on_false_node: Node = generate_nodes(&on_smaller_false_indexes, data, target, cut);
     return Node {
         gini_impurity: Some(smaller_gini),
         feature_index: Some(smaller_feature_index),
@@ -210,7 +214,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=DAD72B351762EC125A1B443CDBEAC070.lvs-foyert2-3409";
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=55029637082A8BC6D68B6DA0E255D0DC.lvs-foyert1-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
@@ -268,8 +272,11 @@ fn main() {
             match result_response {
                 Ok(value) => response = value,
                 Err(error) => {
-                    println!("Unable to get the response: {:?}", error);
-                    continue;
+                    if try_value <= MAX_TRIES {
+                        println!("Unable to get the response: {:?}", error);
+                        continue;
+                    }
+                    panic!("Unable to get the response: {:?}", error);
                 }
             }
             let raw_page_html: String;
@@ -277,8 +284,11 @@ fn main() {
             match response_text {
                 Ok(value) => raw_page_html = value,
                 Err(error) => {
-                    println!("Unable to find text of the response: {:?}", error);
-                    continue;
+                    if try_value <= MAX_TRIES {
+                        println!("Unable to find text of the response: {:?}", error);
+                        continue;
+                    }
+                    panic!("Unable to find text of the response: {:?}", error);
                 }
             }
             const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
@@ -292,8 +302,11 @@ fn main() {
                 second_index = second_value;
             } else {
                 println!("{:?}", raw_page_html);
-                println!("Unable to find json in html document");
-                continue;
+                if try_value <= MAX_TRIES {
+                    println!("Unable to find json in html document");
+                    continue;
+                }
+                panic!("Unable to find json in html document");
             }
             page_html = raw_page_html[first_index + FIST_INDEX_STRING.len()..second_index - 6].to_string();
             break;
@@ -430,25 +443,25 @@ fn main() {
         artifacts_count_data.push(artifacts_count);
         enchantments_count_data.push(enchantments_count);
     }
-    let unique_lands_values: Vec<u8> = get_unique_values(&lands_count_data);
-    let unique_creatures_values: Vec<u8> = get_unique_values(&creatures_count_data);
-    let unique_instants_values: Vec<u8> = get_unique_values(&instants_count_data);
-    let unique_sorceries_values: Vec<u8> = get_unique_values(&sorceries_count_data);
-    let unique_artifacts_values: Vec<u8> = get_unique_values(&artifacts_count_data);
-    let unique_enchantment_values: Vec<u8> = get_unique_values(&enchantments_count_data);
+    let feature_lands_values: Vec<f32> = get_feature_values(&lands_count_data);
+    let feature_creatures_values: Vec<f32> = get_feature_values(&creatures_count_data);
+    let feature_instants_values: Vec<f32> = get_feature_values(&instants_count_data);
+    let feature_sorceries_values: Vec<f32> = get_feature_values(&sorceries_count_data);
+    let feature_artifacts_values: Vec<f32> = get_feature_values(&artifacts_count_data);
+    let feature_enchantments_values: Vec<f32> = get_feature_values(&enchantments_count_data);
     println!("0:W, 1:U, 2:B, 3:R, 4:G");
-    println!("Unique lands values: {:?}", unique_lands_values);
-    println!("Unique creatures values: {:?}", unique_creatures_values);
-    println!("Unique instants values: {:?}", unique_instants_values);
-    println!("Unique sorceries values: {:?}", unique_sorceries_values);
-    println!("Unique artifacts values: {:?}", unique_artifacts_values);
-    println!("Unique enchantments values: {:?}", unique_enchantment_values);
-    let lands_data: Vec<Vec<bool>> = get_data_values(&lands_count_data, unique_lands_values);
-    let creatures_data: Vec<Vec<bool>> = get_data_values(&creatures_count_data, unique_creatures_values);
-    let instants_data: Vec<Vec<bool>> = get_data_values(&instants_count_data, unique_instants_values);
-    let sorceries_data: Vec<Vec<bool>> = get_data_values(&sorceries_count_data, unique_sorceries_values);
-    let artifacts_data: Vec<Vec<bool>> = get_data_values(&artifacts_count_data, unique_artifacts_values);
-    let enchantments_data: Vec<Vec<bool>> = get_data_values(&enchantments_count_data, unique_enchantment_values);
+    println!("Unique lands values: {:?}", feature_lands_values);
+    println!("Unique creatures values: {:?}", feature_creatures_values);
+    println!("Unique instants values: {:?}", feature_instants_values);
+    println!("Unique sorceries values: {:?}", feature_sorceries_values);
+    println!("Unique artifacts values: {:?}", feature_artifacts_values);
+    println!("Unique enchantments values: {:?}", feature_enchantments_values);
+    let lands_data: Vec<Vec<bool>> = get_data_values(&lands_count_data, feature_lands_values);
+    let creatures_data: Vec<Vec<bool>> = get_data_values(&creatures_count_data, feature_creatures_values);
+    let instants_data: Vec<Vec<bool>> = get_data_values(&instants_count_data, feature_instants_values);
+    let sorceries_data: Vec<Vec<bool>> = get_data_values(&sorceries_count_data, feature_sorceries_values);
+    let artifacts_data: Vec<Vec<bool>> = get_data_values(&artifacts_count_data, feature_artifacts_values);
+    let enchantments_data: Vec<Vec<bool>> = get_data_values(&enchantments_count_data, feature_enchantments_values);
     const TRAINING_PERCENTAGE: f32 = 0.8;
     let max_training_index: usize = (deck_position_less_than_9_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
     println!("N of training decks: {:?}", max_training_index);
@@ -465,40 +478,49 @@ fn main() {
     data_array_map.append(&mut get_training_data_from_matrix(&sorceries_data, max_training_index));
     data_array_map.append(&mut get_training_data_from_matrix(&artifacts_data, max_training_index));
     data_array_map.append(&mut get_training_data_from_matrix(&enchantments_data, max_training_index));
-    let generated_nodes: Node = generate_nodes(
-        &Vec::from_iter(0..max_training_index),
-        &data_array_map,
-        &deck_position_less_than_9_data[0..max_training_index].to_vec(),
-    );
-    println!("Node: {:?}", generated_nodes);
-    let mut correct_predictions: usize = 0;
-    let mut total_predictions: usize = 0;
-    for index in max_training_index..deck_position_less_than_9_data.len() {
-        total_predictions += 1;
-        let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
-        for land_data in &lands_data {
-            vector_data.push(land_data[index]);
+    let mut best_cut_value: usize = 0;
+    let mut best_prediction: f32 = 0.0;
+    for cut_value in 0..deck_position_less_than_9_data.len() {
+        let generated_tree: Node = generate_nodes(
+            &Vec::from_iter(0..max_training_index),
+            &data_array_map,
+            &deck_position_less_than_9_data[0..max_training_index].to_vec(),
+            cut_value,
+        );
+        let mut correct_predictions: usize = 0;
+        let mut total_predictions: usize = 0;
+        for index in max_training_index..deck_position_less_than_9_data.len() {
+            total_predictions += 1;
+            let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
+            for land_data in &lands_data {
+                vector_data.push(land_data[index]);
+            }
+            for creature_data in &creatures_data {
+                vector_data.push(creature_data[index]);
+            }
+            for instant_data in &instants_data {
+                vector_data.push(instant_data[index]);
+            }
+            for sorcery_data in &sorceries_data {
+                vector_data.push(sorcery_data[index]);
+            }
+            for artifact_data in &artifacts_data {
+                vector_data.push(artifact_data[index]);
+            }
+            for enchantment_data in &enchantments_data {
+                vector_data.push(enchantment_data[index]);
+            }
+            let prediction: bool = evaluate_data(&generated_tree, vector_data);
+            if prediction == deck_position_less_than_9_data[index] {
+                correct_predictions += 1;
+            }
         }
-        for creature_data in &creatures_data {
-            vector_data.push(creature_data[index]);
-        }
-        for instant_data in &instants_data {
-            vector_data.push(instant_data[index]);
-        }
-        for sorcery_data in &sorceries_data {
-            vector_data.push(sorcery_data[index]);
-        }
-        for artifact_data in &artifacts_data {
-            vector_data.push(artifact_data[index]);
-        }
-        for enchantment_data in &enchantments_data {
-            vector_data.push(enchantment_data[index]);
-        }
-        let prediction: bool = evaluate_data(&generated_nodes, vector_data);
-        println!("The prediction for data is: {:?}", prediction);
-        if prediction == deck_position_less_than_9_data[index] {
-            correct_predictions += 1;
+        let prediction_percentage: f32 = correct_predictions as f32 / total_predictions as f32 * 100.0;
+        println!("Prediction: {:?} for cut {:?}", prediction_percentage, cut_value);
+        if prediction_percentage > best_prediction {
+            best_cut_value = cut_value;
+            best_prediction = prediction_percentage;
         }
     }
-    println!("Prediction %: {:?}\nCorect: {:?}\nTotal: {:?}", correct_predictions as f32 / total_predictions as f32 * 100.0, correct_predictions, total_predictions);
+    println!("Prediction %: {:?}\nBest cut value: {:?}", best_prediction, best_cut_value);
 }
