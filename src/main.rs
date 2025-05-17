@@ -1,8 +1,8 @@
 /*
  * N of decks = 480
- * Version with everything = 62.5%
- * Version without lands = 78.125%
- * Version with lands = 80.20833%
+ * Version with everything = 77.06422%
+ * Version without lands = 77.06422%
+ * Version with lands = 80.73394%
  * Version with creatures = 77.08333%
  * Version with instants = 67.70833%
  * Version with sorceries = 64.58333%
@@ -14,6 +14,7 @@ use std::{thread, time::Duration};
 
 use serde_json::Value;
 use reqwest::blocking::{Client, Response};
+use rand::Rng;
 
 #[derive(Debug)]
 struct Node {
@@ -214,7 +215,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=55029637082A8BC6D68B6DA0E255D0DC.lvs-foyert1-3409";
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=BE40E536E000707B11852E53662DF313.lvs-foyert1-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
@@ -236,6 +237,8 @@ fn main() {
         "05-0312774499",
         "05-0412774521",
         "05-0912777329",
+        "05-1012777346",
+        "05-1112777364",
     ]);
     for url_query in &url_queries {
         urls.push(format!("{}{}", mtgo_uri, url_query));
@@ -478,18 +481,82 @@ fn main() {
     data_array_map.append(&mut get_training_data_from_matrix(&sorceries_data, max_training_index));
     data_array_map.append(&mut get_training_data_from_matrix(&artifacts_data, max_training_index));
     data_array_map.append(&mut get_training_data_from_matrix(&enchantments_data, max_training_index));
-    let mut best_cut_value: usize = 0;
-    let mut best_prediction: f32 = 0.0;
-    for cut_value in 0..deck_position_less_than_9_data.len() {
-        let generated_tree: Node = generate_nodes(
-            &Vec::from_iter(0..max_training_index),
-            &data_array_map,
-            &deck_position_less_than_9_data[0..max_training_index].to_vec(),
-            cut_value,
-        );
-        let mut correct_predictions: usize = 0;
-        let mut total_predictions: usize = 0;
-        for index in max_training_index..deck_position_less_than_9_data.len() {
+    let mut forest: Vec<Node> = Vec::new();
+    for _ in 0..100 {
+        let mut bootstrapped_data: Vec<Vec<bool>> = Vec::new();
+        let mut rng_thread: rand::rngs::ThreadRng = rand::thread_rng();
+        let mut random_numbers: Vec<usize> = Vec::new();
+        for _ in 0..max_training_index {
+            random_numbers.push(rng_thread.gen_range(0..max_training_index));
+        }
+        for data_vector in &data_array_map {
+            let mut bootstrapped_vector: Vec<bool> = Vec::new();
+            for random_number in &random_numbers {
+                bootstrapped_vector.push(data_vector[*random_number]);
+            }
+            bootstrapped_data.push(bootstrapped_vector);
+        }
+        let mut best_cut_value: usize = 0;
+        let mut best_prediction: f32 = 0.0;
+        let mut best_node: Node = Node {
+            gini_impurity: None,
+            feature_index: None,
+            on_true: None,
+            on_false: None,
+            prediction: None,
+        };
+        for cut_value in 0..deck_position_less_than_9_data.len() {
+            let generated_tree: Node = generate_nodes(
+                &Vec::from_iter(0..max_training_index),
+                &bootstrapped_data,
+                &deck_position_less_than_9_data[0..max_training_index].to_vec(),
+                cut_value,
+            );
+            let mut correct_predictions: usize = 0;
+            let mut total_predictions: usize = 0;
+            for index in max_training_index..deck_position_less_than_9_data.len() {
+                total_predictions += 1;
+                let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
+                for land_data in &lands_data {
+                    vector_data.push(land_data[index]);
+                }
+                for creature_data in &creatures_data {
+                    vector_data.push(creature_data[index]);
+                }
+                for instant_data in &instants_data {
+                    vector_data.push(instant_data[index]);
+                }
+                for sorcery_data in &sorceries_data {
+                    vector_data.push(sorcery_data[index]);
+                }
+                for artifact_data in &artifacts_data {
+                    vector_data.push(artifact_data[index]);
+                }
+                for enchantment_data in &enchantments_data {
+                    vector_data.push(enchantment_data[index]);
+                }
+                let prediction: bool = evaluate_data(&generated_tree, vector_data);
+                if prediction == deck_position_less_than_9_data[index] {
+                    correct_predictions += 1;
+                }
+            }
+            let prediction_percentage: f32 = correct_predictions as f32 / total_predictions as f32 * 100.0;
+            println!("Prediction: {:?} for cut {:?}", prediction_percentage, cut_value);
+            if prediction_percentage > best_prediction {
+                best_cut_value = cut_value;
+                best_prediction = prediction_percentage;
+                best_node = generated_tree;
+            }
+        }
+        forest.push(best_node);
+        println!("Prediction %: {:?}\nBest cut value: {:?}", best_prediction, best_cut_value);
+    }
+    let mut correct_predictions: usize = 0;
+    let mut total_predictions: usize = 0;
+    for index in max_training_index..deck_position_less_than_9_data.len() {
+        let mut number_of_true: usize = 0;
+        let mut number_of_false: usize = 0;
+        for tree in &forest {
             total_predictions += 1;
             let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
             for land_data in &lands_data {
@@ -510,17 +577,14 @@ fn main() {
             for enchantment_data in &enchantments_data {
                 vector_data.push(enchantment_data[index]);
             }
-            let prediction: bool = evaluate_data(&generated_tree, vector_data);
-            if prediction == deck_position_less_than_9_data[index] {
-                correct_predictions += 1;
+            if evaluate_data(&tree, vector_data) {
+                number_of_true += 1;
+            } else {
+                number_of_false += 1;
             }
         }
-        let prediction_percentage: f32 = correct_predictions as f32 / total_predictions as f32 * 100.0;
-        println!("Prediction: {:?} for cut {:?}", prediction_percentage, cut_value);
-        if prediction_percentage > best_prediction {
-            best_cut_value = cut_value;
-            best_prediction = prediction_percentage;
+        if number_of_true >= number_of_false {
+
         }
     }
-    println!("Prediction %: {:?}\nBest cut value: {:?}", best_prediction, best_cut_value);
 }
