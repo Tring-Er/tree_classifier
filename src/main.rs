@@ -14,7 +14,7 @@ use std::{thread, time::Duration};
 
 use serde_json::Value;
 use reqwest::blocking::{Client, Response};
-use rand::Rng;
+use rand::{Rng, seq::SliceRandom};
 
 #[derive(Debug)]
 struct Node {
@@ -166,6 +166,8 @@ fn generate_nodes(
     data: &Vec<Vec<bool>>,
     target: &Vec<bool>,
     cut: usize,
+    number_of_feature_to_consider: usize,
+    mut chosen_features: Vec<usize>,
 ) -> Node {
     let (node_gini_impurity, number_of_true, number_of_false) = get_node_gini_impurity(target, indexes);
     if node_gini_impurity == 0.0 || number_of_true + number_of_false <= cut {
@@ -175,11 +177,31 @@ fn generate_nodes(
     let mut smaller_feature_index: usize = usize::MAX;
     let mut on_smaller_true_indexes: Vec<usize> = Vec::new();
     let mut on_smaller_false_indexes: Vec<usize> = Vec::new();
-    for feature_index in 0..data.len() {
+    let mut chosen_feature_indexes: Vec<usize> = Vec::new();
+    let mut feature_indexes: Vec<usize> = Vec::from_iter(0..data.len());
+    let mut features_indexes_to_remove: Vec<usize> = Vec::new();
+    for chosen_feature in &chosen_features {
+        for (index, item) in feature_indexes.iter().enumerate() {
+            if item == chosen_feature {
+                features_indexes_to_remove.push(index);
+            }
+        }
+    }
+    features_indexes_to_remove.sort();
+    for index in 0..features_indexes_to_remove.len() {
+        feature_indexes.remove(features_indexes_to_remove[index] - index);
+    }
+    let mut rng_thread: rand::rngs::ThreadRng = rand::thread_rng();
+    feature_indexes.shuffle(&mut rng_thread);
+    for index in 0..number_of_feature_to_consider {
+        chosen_feature_indexes.push(feature_indexes[index]);
+    }
+    println!("Feature indexes chosen: {:?}", chosen_feature_indexes);
+    for feature_index in &chosen_feature_indexes {
         let mut true_indexes: Vec<usize> = Vec::new();
         let mut false_indexes: Vec<usize> = Vec::new();
         for data_index in indexes {
-            if data[feature_index][*data_index] {
+            if data[*feature_index][*data_index] {
                 true_indexes.push(*data_index);
             } else {
                 false_indexes.push(*data_index);
@@ -194,7 +216,7 @@ fn generate_nodes(
             ) / (true_indexes.len() as f32 + false_indexes.len() as f32);
         if total_gini_impurity < smaller_gini {
             smaller_gini = total_gini_impurity;
-            smaller_feature_index = feature_index;
+            smaller_feature_index = *feature_index;
             on_smaller_true_indexes = true_indexes;
             on_smaller_false_indexes = false_indexes;
         }
@@ -202,8 +224,23 @@ fn generate_nodes(
     if f32::abs(smaller_gini - node_gini_impurity) <= 0.000001 {
         return leaf_node(number_of_true, number_of_false, node_gini_impurity);
     }
-    let on_true_node: Node = generate_nodes(&on_smaller_true_indexes, data, target, cut);
-    let on_false_node: Node = generate_nodes(&on_smaller_false_indexes, data, target, cut);
+    chosen_features.push(smaller_feature_index);
+    let on_true_node: Node = generate_nodes(
+        &on_smaller_true_indexes,
+        data,
+        target,
+        cut,
+        number_of_feature_to_consider,
+        chosen_features.clone(),
+    );
+    let on_false_node: Node = generate_nodes(
+        &on_smaller_false_indexes,
+        data,
+        target,
+        cut,
+        number_of_feature_to_consider,
+        chosen_features.clone(),
+    );
     return Node {
         gini_impurity: Some(smaller_gini),
         feature_index: Some(smaller_feature_index),
@@ -215,7 +252,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=BE40E536E000707B11852E53662DF313.lvs-foyert1-3409";
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=C3BCAB0657382D70639105BFD18B0DE6.lvs-foyert2-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
@@ -505,18 +542,28 @@ fn main() {
             on_false: None,
             prediction: None,
         };
-        for cut_value in 0..deck_position_less_than_9_data.len() {
+        for cut_value in [
+            (max_training_index as f32 * 0.01) as usize,
+        ] {
             let generated_tree: Node = generate_nodes(
                 &Vec::from_iter(0..max_training_index),
                 &bootstrapped_data,
                 &deck_position_less_than_9_data[0..max_training_index].to_vec(),
                 cut_value,
+                f32::sqrt(data_array_map.len() as f32) as usize,
+                Vec::new(),
             );
             let mut correct_predictions: usize = 0;
             let mut total_predictions: usize = 0;
             for index in max_training_index..deck_position_less_than_9_data.len() {
                 total_predictions += 1;
-                let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
+                let mut vector_data: Vec<bool> = Vec::from([
+                    has_white_data[index],
+                    has_blue_data[index],
+                    has_black_data[index],
+                    has_red_data[index],
+                    has_green_data[index]
+                ]);
                 for land_data in &lands_data {
                     vector_data.push(land_data[index]);
                 }
@@ -556,9 +603,15 @@ fn main() {
     for index in max_training_index..deck_position_less_than_9_data.len() {
         let mut number_of_true: usize = 0;
         let mut number_of_false: usize = 0;
+        total_predictions += 1;
         for tree in &forest {
-            total_predictions += 1;
-            let mut vector_data: Vec<bool> = Vec::from([has_white_data[index], has_blue_data[index], has_black_data[index], has_red_data[index], has_green_data[index]]);
+            let mut vector_data: Vec<bool> = Vec::from([
+                has_white_data[index],
+                has_blue_data[index],
+                has_black_data[index],
+                has_red_data[index],
+                has_green_data[index]
+            ]);
             for land_data in &lands_data {
                 vector_data.push(land_data[index]);
             }
@@ -583,8 +636,16 @@ fn main() {
                 number_of_false += 1;
             }
         }
-        if number_of_true >= number_of_false {
-
+        if (number_of_true >= number_of_false) && deck_position_less_than_9_data[index] {
+            correct_predictions += 1;
+        } else if (number_of_false >= number_of_true) && !deck_position_less_than_9_data[index] {
+            correct_predictions += 1;
         }
     }
+    println!(
+        "Total number of prediction: {:?}\nNumber of correct predictions: {:?}\nAccuracy: {:?}%",
+        total_predictions,
+        correct_predictions,
+        correct_predictions as f32 / total_predictions as f32 * 100.0,
+    );
 }
