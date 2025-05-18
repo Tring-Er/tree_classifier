@@ -1,6 +1,6 @@
 /*
- * N of decks = 480
- * Version with everything = 77.06422%
+ * N of decks = 608
+ * Version with everything = 77.06422% 77.04918
  * Version without lands = 77.06422%
  * Version with lands = 80.73394%
  * Version with creatures = 77.08333%
@@ -252,7 +252,7 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=C3BCAB0657382D70639105BFD18B0DE6.lvs-foyert2-3409";
+    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=565DA181170C33F3F04646D36D70E38B.lvs-foyert2-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
     const HOST: &str = "www.mtgo.com";
@@ -276,6 +276,8 @@ fn main() {
         "05-0912777329",
         "05-1012777346",
         "05-1112777364",
+        "05-1612780132",
+        "05-1712780149",
     ]);
     for url_query in &url_queries {
         urls.push(format!("{}{}", mtgo_uri, url_query));
