@@ -1,6 +1,6 @@
 /* 
- * N of decks = 608
- * Version with everything = 77.06422% 77.04918
+ * N of decks = 640
+ * Version with everything = 77.06422% 78.125
  * Version without lands = 77.06422%
  * Version with lands = 80.73394%
  * Version with creatures = 77.08333%
@@ -284,6 +284,7 @@ fn main() {
         "05-1112777364",
         "05-1612780132",
         "05-1712780149",
+        "05-1812780167",
     ]);
     for url_query in &url_queries {
         urls.push(format!("{}{}", mtgo_uri, url_query));
@@ -530,7 +531,6 @@ fn main() {
             data_vector[*value] = tmp;
         }
     }
-    println!("{:?}", data_array_map);
     let mut forest: Vec<Node> = Vec::new();
     for _ in 0..100 {
         let mut bootstrapped_data: Vec<Vec<bool>> = Vec::new();
