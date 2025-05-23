@@ -10,6 +10,15 @@
  * Version with enchantments = 77.08333%
  */
 
+const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=565DA181170C33F3F04646D36D70E38B.lvs-foyert2-3409";
+const HOST: &str = "www.mtgo.com";
+const MAX_TRIES: usize = 5;
+const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
+const STANDIGS_KEY: &str = "standings";
+const RANK_KEY: &str = "rank";
+const COLOR_TAG: &str = "COLOR_";
+const TRAINING_PERCENTAGE: f32 = 0.8;
+
 use std::{thread, time::Duration};
 
 use serde_json::Value;
@@ -252,10 +261,8 @@ fn generate_nodes(
 
 
 fn main() {
-    const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=565DA181170C33F3F04646D36D70E38B.lvs-foyert2-3409";
     let mut html_decks: Vec<String> = Vec::new();
     let mut ranks: Vec<u64> = Vec::new();
-    const HOST: &str = "www.mtgo.com";
     let mtgo_uri: String = format!("https://{}/decklist/pauper-challenge-32-2025-", HOST); 
     let mut urls: Vec<String> = Vec::new();
     let url_queries: Vec<&str> = Vec::from([
@@ -287,7 +294,6 @@ fn main() {
         println!("Requesting url: {:?}", url);
         thread::sleep(Duration::from_secs(7));
         let client: Client = Client::new();
-        const MAX_TRIES: usize = 5;
         let mut page_html: String = String::new();
         for try_value in 1..=MAX_TRIES {
             println!("Try {:?}", try_value);
@@ -333,7 +339,6 @@ fn main() {
                     panic!("Unable to find text of the response: {:?}", error);
                 }
             }
-            const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
             let first_index: usize;
             let second_index: usize;
             if let (Some(first_value), Some(second_value)) = (
@@ -375,7 +380,6 @@ fn main() {
             let login_id: &str = &raw_deck[..login_id_end_index];
             login_ids.push(login_id);
         }
-        const STANDIGS_KEY: &str = "standings";
         match serde_json::from_str::<Value>(&page_html) {
             Ok(parsed_data) => {
                 let standings: Vec<&Value>;
@@ -387,7 +391,6 @@ fn main() {
                 let standings: Vec<&Value> = Vec::from_iter(standings);
                 let mut tmp_ranks: Vec<u64> = Vec::new();
                 for object in standings {
-                    const RANK_KEY: &str = "rank";
                     let object_rank: &str;
                     if let Value::String(value) = &object[RANK_KEY] {
                         object_rank = value;
@@ -435,7 +438,6 @@ fn main() {
         let mut sorceries_count: u8 = 0;
         let mut artifacts_count: u8 = 0;
         let mut enchantments_count: u8 = 0;
-        const COLOR_TAG: &str = "COLOR_";
         for html_card in html_cards {
             has_white_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "WHITE"));
             has_blue_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "BLUE"));
@@ -504,7 +506,6 @@ fn main() {
     let sorceries_data: Vec<Vec<bool>> = get_data_values(&sorceries_count_data, feature_sorceries_values);
     let artifacts_data: Vec<Vec<bool>> = get_data_values(&artifacts_count_data, feature_artifacts_values);
     let enchantments_data: Vec<Vec<bool>> = get_data_values(&enchantments_count_data, feature_enchantments_values);
-    const TRAINING_PERCENTAGE: f32 = 0.8;
     let max_training_index: usize = (deck_position_less_than_9_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
     println!("N of training decks: {:?}", max_training_index);
     let mut data_array_map: Vec<Vec<bool>> = Vec::from([
