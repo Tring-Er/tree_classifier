@@ -1,4 +1,4 @@
-/*
+/* 
  * N of decks = 608
  * Version with everything = 77.06422% 77.04918
  * Version without lands = 77.06422%
@@ -10,7 +10,7 @@
  * Version with enchantments = 77.08333%
  */
 
-const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=565DA181170C33F3F04646D36D70E38B.lvs-foyert2-3409";
+const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=412626FBB2D0E059F09E3338159C3406.lvs-foyert2-3409";
 const HOST: &str = "www.mtgo.com";
 const MAX_TRIES: usize = 5;
 const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
@@ -35,12 +35,12 @@ struct Node {
     prediction: Option<bool>,
 }
 
-fn get_training_data_from_matrix(original_data: &Vec<Vec<bool>>, max_training_index: usize) -> Vec<Vec<bool>> {
+fn get_training_data_from_matrix(original_data: &Vec<Vec<bool>>) -> Vec<Vec<bool>> {
     let mut training_data: Vec<Vec<bool>> = Vec::new();
     for data_values in original_data {
         let mut data_vector: Vec<bool> = Vec::new();
-        for data_index in 0..max_training_index {
-            data_vector.push(data_values[data_index]);
+        for value in data_values {
+            data_vector.push(*value);
         }
         training_data.push(data_vector);
     }
@@ -205,7 +205,6 @@ fn generate_nodes(
     for index in 0..number_of_feature_to_consider {
         chosen_feature_indexes.push(feature_indexes[index]);
     }
-    println!("Feature indexes chosen: {:?}", chosen_feature_indexes);
     for feature_index in &chosen_feature_indexes {
         let mut true_indexes: Vec<usize> = Vec::new();
         let mut false_indexes: Vec<usize> = Vec::new();
@@ -509,22 +508,32 @@ fn main() {
     let max_training_index: usize = (deck_position_less_than_9_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
     println!("N of training decks: {:?}", max_training_index);
     let mut data_array_map: Vec<Vec<bool>> = Vec::from([
-        has_white_data[0..max_training_index].to_owned(),
-        has_blue_data[0..max_training_index].to_owned(),
-        has_black_data[0..max_training_index].to_owned(),
-        has_red_data[0..max_training_index].to_owned(),
-        has_green_data[0..max_training_index].to_owned(),
+        has_white_data.to_owned(),
+        has_blue_data.to_owned(),
+        has_black_data.to_owned(),
+        has_red_data.to_owned(),
+        has_green_data.to_owned(),
     ]);
-    data_array_map.append(&mut get_training_data_from_matrix(&lands_data, max_training_index));
-    data_array_map.append(&mut get_training_data_from_matrix(&creatures_data, max_training_index));
-    data_array_map.append(&mut get_training_data_from_matrix(&instants_data, max_training_index));
-    data_array_map.append(&mut get_training_data_from_matrix(&sorceries_data, max_training_index));
-    data_array_map.append(&mut get_training_data_from_matrix(&artifacts_data, max_training_index));
-    data_array_map.append(&mut get_training_data_from_matrix(&enchantments_data, max_training_index));
+    data_array_map.append(&mut get_training_data_from_matrix(&lands_data));
+    data_array_map.append(&mut get_training_data_from_matrix(&creatures_data));
+    data_array_map.append(&mut get_training_data_from_matrix(&instants_data));
+    data_array_map.append(&mut get_training_data_from_matrix(&sorceries_data));
+    data_array_map.append(&mut get_training_data_from_matrix(&artifacts_data));
+    data_array_map.append(&mut get_training_data_from_matrix(&enchantments_data));
+    let mut rng_thread: rand::rngs::ThreadRng = rand::thread_rng();
+    let mut random_vector: Vec<usize> = Vec::from_iter(0..deck_position_less_than_9_data.len());
+    random_vector.shuffle(&mut rng_thread);
+    for (index, value) in random_vector.iter().enumerate() {
+        for data_vector in &mut data_array_map {
+            let tmp: bool = data_vector[index];
+            data_vector[index] = data_vector[*value];
+            data_vector[*value] = tmp;
+        }
+    }
+    println!("{:?}", data_array_map);
     let mut forest: Vec<Node> = Vec::new();
     for _ in 0..100 {
         let mut bootstrapped_data: Vec<Vec<bool>> = Vec::new();
-        let mut rng_thread: rand::rngs::ThreadRng = rand::thread_rng();
         let mut random_numbers: Vec<usize> = Vec::new();
         for _ in 0..max_training_index {
             random_numbers.push(rng_thread.gen_range(0..max_training_index));
