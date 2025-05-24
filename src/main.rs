@@ -13,7 +13,7 @@
 const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=412626FBB2D0E059F09E3338159C3406.lvs-foyert2-3409";
 const HOST: &str = "www.mtgo.com";
 const MAX_TRIES: usize = 5;
-const FIST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
+const FIRST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
 const STANDIGS_KEY: &str = "standings";
 const RANK_KEY: &str = "rank";
 const COLOR_TAG: &str = "COLOR_";
@@ -33,6 +33,13 @@ struct Node {
     on_true: Option<Box<Node>>,
     on_false: Option<Box<Node>>,
     prediction: Option<bool>,
+}
+
+fn panic_on_try_value_exceding_max_tries(try_value: usize, error_message: String) {
+    if try_value > MAX_TRIES {
+        panic!("{}", error_message);
+    }
+    println!("{}", error_message);
 }
 
 fn get_training_data_from_matrix(original_data: &Vec<Vec<bool>>) -> Vec<Vec<bool>> {
@@ -260,9 +267,6 @@ fn generate_nodes(
 
 
 fn main() {
-    let mut html_decks: Vec<String> = Vec::new();
-    let mut ranks: Vec<u64> = Vec::new();
-    let mtgo_uri: String = format!("https://{}/decklist/pauper-challenge-32-2025-", HOST); 
     let mut urls: Vec<String> = Vec::new();
     let url_queries: Vec<&str> = Vec::from([
         "04-0412763152",
@@ -287,12 +291,14 @@ fn main() {
         "05-1812780167",
     ]);
     for url_query in &url_queries {
-        urls.push(format!("{}{}", mtgo_uri, url_query));
+        urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
     }
+    let mut html_decks: Vec<String> = Vec::new();
+    let mut ranks: Vec<u64> = Vec::new();
     for url_index in 0..url_queries.len() {
+        thread::sleep(Duration::from_secs(7));
         let url: &str = &urls[url_index];
         println!("Requesting url: {:?}", url);
-        thread::sleep(Duration::from_secs(7));
         let client: Client = Client::new();
         let mut page_html: String = String::new();
         for try_value in 1..=MAX_TRIES {
@@ -320,42 +326,48 @@ fn main() {
             match result_response {
                 Ok(value) => response = value,
                 Err(error) => {
-                    if try_value <= MAX_TRIES {
-                        println!("Unable to get the response: {:?}", error);
-                        continue;
-                    }
-                    panic!("Unable to get the response: {:?}", error);
+                    panic_on_try_value_exceding_max_tries(
+                        try_value,
+                        format!("Unable to get the response: {:?}", error),
+                    );
+                    continue;
                 }
             }
-            let raw_page_html: String;
             let response_text = response.text();
+            let raw_page_html: String;
             match response_text {
                 Ok(value) => raw_page_html = value,
                 Err(error) => {
-                    if try_value <= MAX_TRIES {
-                        println!("Unable to find text of the response: {:?}", error);
-                        continue;
-                    }
-                    panic!("Unable to find text of the response: {:?}", error);
+                    panic_on_try_value_exceding_max_tries(
+                        try_value,
+                        format!("Unable to find text of the response: {:?}", error),
+                    );
+                    continue;
                 }
             }
             let first_index: usize;
-            let second_index: usize;
-            if let (Some(first_value), Some(second_value)) = (
-                raw_page_html.find(FIST_INDEX_STRING),
-                raw_page_html.find(r#"window.MTGO.decklists.type = "#)
-            ) {
-                first_index = first_value;
-                second_index = second_value;
-            } else {
-                println!("{:?}", raw_page_html);
-                if try_value <= MAX_TRIES {
-                    println!("Unable to find json in html document");
+            match raw_page_html.find(FIRST_INDEX_STRING) {
+                Some(value) => first_index = value,
+                None => {
+                    panic_on_try_value_exceding_max_tries(
+                        try_value,
+                        format!("{:?}\nUnable to find json in html document", raw_page_html),
+                    );
                     continue;
                 }
-                panic!("Unable to find json in html document");
             }
-            page_html = raw_page_html[first_index + FIST_INDEX_STRING.len()..second_index - 6].to_string();
+            let second_index: usize;
+            match raw_page_html.find(r#"window.MTGO.decklists.type = "#) {
+                Some(value) => second_index = value,
+                None => {
+                    panic_on_try_value_exceding_max_tries(
+                        try_value,
+                        format!("{:?}\nUnable to find json in html document", raw_page_html),
+                    );
+                    continue;
+                }
+            }
+            page_html = raw_page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string();
             break;
         }
         let end_decks_index: usize;
