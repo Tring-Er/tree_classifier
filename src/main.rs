@@ -10,12 +10,13 @@
  * Version with enchantments = 77.08333%
  */
 
-const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=412626FBB2D0E059F09E3338159C3406.lvs-foyert2-3409";
+const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=D30B7D9614FECDB447E6F4B02C0A4B32.lvs-foyert2-3409";
 const HOST: &str = "www.mtgo.com";
 const MAX_TRIES: usize = 5;
 const FIRST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
-const STANDIGS_KEY: &str = "standings";
+const STANDINGS_KEY: &str = "standings";
 const RANK_KEY: &str = "rank";
+const JSON_DECK_LISTS_KEY: &str = "decklists";
 const COLOR_TAG: &str = "COLOR_";
 const TRAINING_PERCENTAGE: f32 = 0.8;
 
@@ -97,6 +98,7 @@ fn get_card_type_quantity(html_card: &str, card_type: &str) -> Result<Option<u8>
         if let Some(value) = html_card.find("\"qty\":\"") {
             first_index = value;
         } else {
+            println!("HTML CARD: {:?}", html_card);
             return Err("Unable to find card type first index");
         }
         let second_index: usize;
@@ -294,15 +296,15 @@ fn main() {
         urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
     }
     let mut html_decks: Vec<String> = Vec::new();
-    let mut ranks: Vec<u64> = Vec::new();
+    let mut decks_rank: Vec<u64> = Vec::new();
     for url_index in 0..url_queries.len() {
-        thread::sleep(Duration::from_secs(7));
         let url: &str = &urls[url_index];
         println!("Requesting url: {:?}", url);
         let client: Client = Client::new();
-        let mut page_html: String = String::new();
+        let mut raw_decks_json: String = String::new();
         for try_value in 1..=MAX_TRIES {
             println!("Try {:?}", try_value);
+            thread::sleep(Duration::from_secs(7));
             let result_response: Result<Response, reqwest::Error> = client
                 .get(url)
                 .timeout(Duration::from_secs(60))
@@ -333,10 +335,9 @@ fn main() {
                     continue;
                 }
             }
-            let response_text = response.text();
-            let raw_page_html: String;
-            match response_text {
-                Ok(value) => raw_page_html = value,
+            let page_html: String;
+            match response.text() {
+                Ok(value) => page_html = value,
                 Err(error) => {
                     panic_on_try_value_exceding_max_tries(
                         try_value,
@@ -346,79 +347,66 @@ fn main() {
                 }
             }
             let first_index: usize;
-            match raw_page_html.find(FIRST_INDEX_STRING) {
+            match page_html.find(FIRST_INDEX_STRING) {
                 Some(value) => first_index = value,
                 None => {
                     panic_on_try_value_exceding_max_tries(
                         try_value,
-                        format!("{:?}\nUnable to find json in html document", raw_page_html),
+                        format!("{:?}\nUnable to find json in html document", page_html),
                     );
                     continue;
                 }
             }
             let second_index: usize;
-            match raw_page_html.find(r#"window.MTGO.decklists.type = "#) {
+            match page_html.find(r#"window.MTGO.decklists.type = "#) {
                 Some(value) => second_index = value,
                 None => {
                     panic_on_try_value_exceding_max_tries(
                         try_value,
-                        format!("{:?}\nUnable to find json in html document", raw_page_html),
+                        format!("{:?}\nUnable to find json in html document", page_html),
                     );
                     continue;
                 }
             }
-            page_html = raw_page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string();
+            raw_decks_json = page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string();
             break;
         }
-        let end_decks_index: usize;
-        if let Some(value) = page_html.find("\"brackets\":") {
-            end_decks_index = value;
-        } else {
-            panic!("End decks index not found");
-        }
-        let raw_decks: Vec<&str> = page_html[..end_decks_index].split(r#""loginid":""#).collect();
-        println!("Request recived with: {:?} games", raw_decks.len() - 1);
-        if raw_decks.len() - 1 != 32 {
-            panic!("N of decks not 32: {:?}", page_html);
-        }
-        let mut login_ids: Vec<&str> = Vec::new();
-        for raw_deck in &raw_decks {
-            let login_id_end_index: usize;
-            if let Some(value) = raw_deck.find("\"") {
-                login_id_end_index = value;
-            } else {
-               panic!("Value not found");
-            }
-            let login_id: &str = &raw_deck[..login_id_end_index];
-            login_ids.push(login_id);
-        }
-        match serde_json::from_str::<Value>(&page_html) {
-            Ok(parsed_data) => {
-                let standings: Vec<&Value>;
-                if let Some(value) = parsed_data[STANDIGS_KEY].as_array() {
-                    standings = Vec::from_iter(value);
-                } else {
-                    panic!("Unable to read key {:?} from json", STANDIGS_KEY);
-                }
-                let standings: Vec<&Value> = Vec::from_iter(standings);
-                let mut tmp_ranks: Vec<u64> = Vec::new();
-                for object in standings {
-                    let object_rank: &str;
-                    if let Value::String(value) = &object[RANK_KEY] {
-                        object_rank = value;
-                    } else {
-                        panic!("Unable to read key {:?} from json", RANK_KEY);
-                    }
-                    if let Ok(rank_value) = object_rank.parse::<u64>() {
-                        ranks.push(rank_value);
-                    }
-                }
-                ranks.append(&mut tmp_ranks);
-            },
+        let json_data: Value;
+        match serde_json::from_str::<Value>(&raw_decks_json) {
+            Ok(parsed_data) => json_data = parsed_data,
             Err(error) => panic!("Unable to parse json: {:?}", error),
         };
-        for deck_index in 1..raw_decks.len() {
-            html_decks.push(raw_decks[deck_index].to_string());
+        let json_standings: Vec<&Value>;
+        match json_data[STANDINGS_KEY].as_array() {
+            Some(value) => json_standings = Vec::from_iter(value),
+            None => panic!("Unable to read key {:?} from json", STANDINGS_KEY),
+        }
+        for json_standing in json_standings {
+            let standing_value: &str;
+            match &json_standing[RANK_KEY] {
+                Value::String(value) => standing_value = value,
+                _ => panic!("Unable to read key {:?} from json", RANK_KEY),
+            }
+            match standing_value.parse::<u64>() {
+                Ok(parsed_rank_value) => decks_rank.push(parsed_rank_value),
+                Err(error) => panic!("Failed to parse value: {:?}", error),
+            }
+        }
+        let json_decks: Vec<&Value>;
+        match json_data[JSON_DECK_LISTS_KEY].as_array() {
+            Some(value) => json_decks = Vec::from_iter(value),
+            None => panic!("Unable to read key {:?} from json", JSON_DECK_LISTS_KEY),
+        }
+        println!("Request recived with: {:?} decks", json_decks.len());
+        if json_decks.len() != 32 {
+            panic!("N of decks not 32");
+        }
+        for deck_index in 1..json_decks.len() {
+            println!("{}", json_decks[deck_index].to_string());
+            match serde_json::to_string(json_decks[deck_index]) {
+                Ok(value) => html_decks.push(value.to_owned()),
+                Err(error) => panic!("Unable to convert json to str: {:?}", error),
+            }
         }
     }
     println!("Html decks are: {:?}", html_decks.len());
@@ -435,10 +423,8 @@ fn main() {
     let mut enchantments_count_data: Vec<u8> = Vec::new();
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
     for html_deck_index in 0..html_decks.len() {
-        deck_position_less_than_9_data.push(ranks[html_deck_index] < 8);
-        let html_cards: Vec<&str> =
-            html_decks[html_deck_index]
-            .split(r#""docid":""#).collect();
+        deck_position_less_than_9_data.push(decks_rank[html_deck_index] < 8);
+        let html_cards: Vec<String> = html_decks;
         let mut has_white_mana: bool = false;
         let mut has_blue_mana: bool = false;
         let mut has_black_mana: bool = false;
@@ -451,37 +437,41 @@ fn main() {
         let mut artifacts_count: u8 = 0;
         let mut enchantments_count: u8 = 0;
         for html_card in html_cards {
+            println!("{}", html_card);
             has_white_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "WHITE"));
             has_blue_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "BLUE"));
             has_black_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "BLACK"));
             has_red_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "RED"));
             has_green_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "GREEN"));
-            match get_card_type_quantity(html_card, "LAND  ") {
-                Ok(Some(value)) => lands_count += value,
+            match get_card_type_quantity(&html_card, "LAND  ") {
+                Ok(Some(value)) => {
+                    println!("attempting to do: {} + {}", lands_count, value);
+                    lands_count += value;
+                }
                 Err(error) => panic!("{}", error),
                 _ => (),
             }
-            match get_card_type_quantity(html_card, "ISCREA") {
+            match get_card_type_quantity(&html_card, "ISCREA") {
                 Ok(Some(value)) => creatures_count += value,
                 Err(error) => panic!("{}", error),
                 _ => (),
             }
-            match get_card_type_quantity(html_card, "INSTNT") {
+            match get_card_type_quantity(&html_card, "INSTNT") {
                 Ok(Some(value)) => instants_count += value,
                 Err(error) => panic!("{}", error),
                 _ => (),
             }
-            match get_card_type_quantity(html_card, "SORCRY") {
+            match get_card_type_quantity(&html_card, "SORCRY") {
                 Ok(Some(value)) => sorceries_count += value,
                 Err(error) => panic!("{}", error),
                 _ => (),
             }
-            match get_card_type_quantity(html_card, "ARTFCT") {
+            match get_card_type_quantity(&html_card, "ARTFCT") {
                 Ok(Some(value)) => artifacts_count += value,
                 Err(error) => panic!("{}", error),
                 _ => (),
             }
-            match get_card_type_quantity(html_card, "ENCHMT") {
+            match get_card_type_quantity(&html_card, "ENCHMT") {
                 Ok(Some(value)) => enchantments_count += value,
                 Err(error) => panic!("{}", error),
                 _ => (),
