@@ -10,7 +10,7 @@
  * Version with enchantments = 77.08333%
  */
 
-const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=D30B7D9614FECDB447E6F4B02C0A4B32.lvs-foyert2-3409";
+const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=26504EDCACA304DCB74AB4E6D17B477C.lvs-foyert2-3409";
 const HOST: &str = "www.mtgo.com";
 const MAX_TRIES: usize = 5;
 const FIRST_INDEX_STRING: &str = r#"window.MTGO.decklists.data = "#;
@@ -295,7 +295,7 @@ fn main() {
     for url_query in &url_queries {
         urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
     }
-    let mut html_decks: Vec<String> = Vec::new();
+    let mut html_decks: Vec<Value> = Vec::new();
     let mut decks_rank: Vec<u64> = Vec::new();
     for url_index in 0..url_queries.len() {
         let url: &str = &urls[url_index];
@@ -403,10 +403,7 @@ fn main() {
         }
         for deck_index in 1..json_decks.len() {
             println!("{}", json_decks[deck_index].to_string());
-            match serde_json::to_string(json_decks[deck_index]) {
-                Ok(value) => html_decks.push(value.to_owned()),
-                Err(error) => panic!("Unable to convert json to str: {:?}", error),
-            }
+            html_decks.push(json_decks[deck_index].clone());
         }
     }
     println!("Html decks are: {:?}", html_decks.len());
@@ -424,7 +421,12 @@ fn main() {
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
     for html_deck_index in 0..html_decks.len() {
         deck_position_less_than_9_data.push(decks_rank[html_deck_index] < 8);
-        let html_cards: Vec<String> = html_decks;
+        let json_deck: &Value = &html_decks[html_deck_index]["main_deck"];
+        let html_cards: &Vec<Value>;
+        match json_deck.as_array() {
+            Some(value) => html_cards = value,
+            None => panic!("Unable to convert deck to String: {:?}", json_deck), 
+        }
         let mut has_white_mana: bool = false;
         let mut has_blue_mana: bool = false;
         let mut has_black_mana: bool = false;
@@ -436,7 +438,12 @@ fn main() {
         let mut sorceries_count: u8 = 0;
         let mut artifacts_count: u8 = 0;
         let mut enchantments_count: u8 = 0;
-        for html_card in html_cards {
+        for json_html_card in html_cards {
+            let html_card: String;
+            match serde_json::to_string(json_html_card) {
+                Ok(value) => html_card = value,
+                Err(error) => panic!("Unable to convert card json to String: {:?}", error),
+            }
             println!("{}", html_card);
             has_white_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "WHITE"));
             has_blue_mana = html_card.contains(&format!("{}{}", COLOR_TAG, "BLUE"));
