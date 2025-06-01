@@ -293,7 +293,7 @@ fn main() {
     for url_query in &url_queries {
         urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
     }
-    let mut decks: Vec<Value> = Vec::new();
+    let mut players: Vec<Value> = Vec::new();
     let mut decks_rank: Vec<u64> = Vec::new();
     for url_index in 0..url_queries.len() {
         let url: &str = &urls[url_index];
@@ -391,21 +391,21 @@ fn main() {
                 Err(error) => panic!("Failed to parse value: {:?}", error),
             }
         }
-        let json_decks: Vec<&Value>;
+        let json_players: Vec<&Value>;
         match json_data[JSON_DECK_LISTS_KEY].as_array() {
-            Some(value) => json_decks = Vec::from_iter(value),
+            Some(value) => json_players = Vec::from_iter(value),
             None => panic!("Unable to read key {:?} from json", JSON_DECK_LISTS_KEY),
         }
-        println!("Request recived with: {:?} decks", json_decks.len());
-        if json_decks.len() != 32 {
-            panic!("N of decks not 32");
+        println!("Request recived with: {:?} players", json_players.len());
+        if json_players.len() != 32 {
+            panic!("N of players not 32");
         }
-        for deck_index in 1..json_decks.len() {
-            println!("{}", json_decks[deck_index].to_string());
-            decks.push(json_decks[deck_index].clone());
+        for player_index in 1..json_players.len() {
+            println!("{}", json_players[player_index].to_string());
+            players.push(json_players[player_index].clone());
         }
     }
-    println!("Html decks are: {:?}", decks.len());
+    println!("Html players are: {:?}", players.len());
     let mut has_white_data: Vec<bool> = Vec::new();
     let mut has_blue_data: Vec<bool> = Vec::new();
     let mut has_black_data: Vec<bool> = Vec::new();
@@ -418,13 +418,17 @@ fn main() {
     let mut artifacts_count_data: Vec<u8> = Vec::new();
     let mut enchantments_count_data: Vec<u8> = Vec::new();
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
-    for html_deck_index in 0..decks.len() {
-        deck_position_less_than_9_data.push(decks_rank[html_deck_index] < 8);
-        let json_deck: &Value = &decks[html_deck_index]["main_deck"];
+    for player_index in 0..players.len() {
+        deck_position_less_than_9_data.push(decks_rank[player_index] < 8);
+        let player_data: &Value;
+        match players[player_index].get("main_deck") {
+            Some(value) => player_data = value,
+            None => panic!("Unable to find main_deck field in json"),
+        }
         let deck: &Vec<Value>;
-        match json_deck.as_array() {
+        match player_data.as_array() {
             Some(value) => deck = value,
-            None => panic!("Unable to convert deck to String: {:?}", json_deck), 
+            None => panic!("Unable to convert deck to Vec: {:?}", player_data), 
         }
         let mut has_white_mana: bool = false;
         let mut has_blue_mana: bool = false;
