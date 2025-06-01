@@ -36,6 +36,32 @@ struct Node {
     prediction: Option<bool>,
 }
 
+fn has_card_color(deck: &Vec<Value>, color_tag: String) -> Result<bool, &'static str> {
+    for card in deck {
+        let card_attributes: &Value;
+        match card.get("card_attributes") {
+            Some(value) => card_attributes = value,
+            None => return Err("Unable to find card_attributes field in json"),
+        }
+        let colors_vector: &Vec<Value>;
+        match card_attributes["colors"].as_array() {
+            Some(value) => colors_vector = value,
+            None => return Err("Unable to find colors tag on json"),
+        }
+        for card_color in colors_vector {
+            let card_color_string: String;
+            match serde_json::to_string(card_color) {
+                Ok(value) => card_color_string = value,
+                Err(_) => return Err("Unable to convert color to String"),
+            }
+            if card_color_string == color_tag {
+                return Ok(true);
+            }
+        }
+    }
+    return Ok(false);
+}
+
 fn panic_on_try_value_exceding_max_tries(try_value: usize, error_message: String) {
     if try_value > MAX_TRIES {
         panic!("{}", error_message);
@@ -430,11 +456,26 @@ fn main() {
             Some(value) => deck = value,
             None => panic!("Unable to convert deck to Vec: {:?}", player_data), 
         }
-        let mut has_white_mana: bool = false;
-        let mut has_blue_mana: bool = false;
-        let mut has_black_mana: bool = false;
-        let mut has_red_mana: bool = false;
-        let mut has_green_mana: bool = false;
+        match has_card_color(deck, format!("{}{}", COLOR_TAG, "WHITE")) {
+            Ok(value) => has_white_data.push(value),
+            Err(error) => panic!("{}", error),
+        }
+        match has_card_color(deck, format!("{}{}", COLOR_TAG, "BLUE")) {
+            Ok(value) => has_blue_data.push(value),
+            Err(error) => panic!("{}", error),
+        }
+        match has_card_color(deck, format!("{}{}", COLOR_TAG, "BLACK")) {
+            Ok(value) => has_black_data.push(value),
+            Err(error) => panic!("{}", error),
+        }
+        match has_card_color(deck, format!("{}{}", COLOR_TAG, "RED")) {
+            Ok(value) => has_red_data.push(value),
+            Err(error) => panic!("{}", error),
+        }
+        match has_card_color(deck, format!("{}{}", COLOR_TAG, "GREEN")) {
+            Ok(value) => has_green_data.push(value),
+            Err(error) => panic!("{}", error),
+        }
         let mut lands_count: u8 = 0;
         let mut creatures_count: u8 = 0;
         let mut instants_count: u8 = 0;
@@ -442,38 +483,6 @@ fn main() {
         let mut artifacts_count: u8 = 0;
         let mut enchantments_count: u8 = 0;
         for card in deck {
-            let card_attributes: &Value;
-            match card.get("card_attributes") {
-                Some(value) => card_attributes = value,
-                None => panic!("Unable to find card_attributes field in json"),
-            }
-            let colors_vector: &Vec<Value>;
-            match card_attributes["colors"].as_array() {
-                Some(value) => colors_vector = value,
-                None => panic!("Unable to find colors tag on json"),
-            }
-            for card_color in colors_vector {
-                let card_color_string: String;
-                match serde_json::to_string(card_color) {
-                    Ok(value) => card_color_string = value,
-                    Err(error) => panic!("Unable to convert color to String: {:?}", error),
-                }
-                if card_color_string == format!("{}{}", COLOR_TAG, "WHITE") {
-                    has_white_mana = true;
-                }
-                if card_color_string == format!("{}{}", COLOR_TAG, "BLUE") {
-                    has_blue_mana = true;
-                }
-                if card_color_string == format!("{}{}", COLOR_TAG, "BLACK") {
-                    has_black_mana = true;
-                }
-                if card_color_string == format!("{}{}", COLOR_TAG, "RED") {
-                    has_red_mana = true;
-                }
-                if card_color_string == format!("{}{}", COLOR_TAG, "GREEN") {
-                    has_green_mana = true;
-                }
-            }
             match get_card_type_quantity(card, "LAND  ") {
                 Ok(value) => lands_count += value,
                 Err(error) => panic!("{}", error),
@@ -499,11 +508,6 @@ fn main() {
                 Err(error) => panic!("{}", error),
             }
         }
-        has_white_data.push(has_white_mana);
-        has_blue_data.push(has_blue_mana);
-        has_black_data.push(has_black_mana);
-        has_red_data.push(has_red_mana);
-        has_green_data.push(has_green_mana);
         lands_count_data.push(lands_count);
         creatures_count_data.push(creatures_count);
         instants_count_data.push(instants_count);
@@ -534,24 +538,24 @@ fn main() {
     let max_training_index: usize =
         (deck_position_less_than_9_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
     println!("N of training decks: {:?}", max_training_index);
-    let mut data_array_map: Vec<Vec<bool>> = Vec::from([
+    let mut data_matrix: Vec<Vec<bool>> = Vec::from([
         has_white_data.to_owned(),
         has_blue_data.to_owned(),
         has_black_data.to_owned(),
         has_red_data.to_owned(),
         has_green_data.to_owned(),
     ]);
-    data_array_map.append(&mut get_training_data_from_matrix(&lands_data));
-    data_array_map.append(&mut get_training_data_from_matrix(&creatures_data));
-    data_array_map.append(&mut get_training_data_from_matrix(&instants_data));
-    data_array_map.append(&mut get_training_data_from_matrix(&sorceries_data));
-    data_array_map.append(&mut get_training_data_from_matrix(&artifacts_data));
-    data_array_map.append(&mut get_training_data_from_matrix(&enchantments_data));
+    data_matrix.append(&mut get_training_data_from_matrix(&lands_data));
+    data_matrix.append(&mut get_training_data_from_matrix(&creatures_data));
+    data_matrix.append(&mut get_training_data_from_matrix(&instants_data));
+    data_matrix.append(&mut get_training_data_from_matrix(&sorceries_data));
+    data_matrix.append(&mut get_training_data_from_matrix(&artifacts_data));
+    data_matrix.append(&mut get_training_data_from_matrix(&enchantments_data));
     let mut rng_thread: rand::rngs::ThreadRng = rand::thread_rng();
     let mut random_vector: Vec<usize> = Vec::from_iter(0..deck_position_less_than_9_data.len());
     random_vector.shuffle(&mut rng_thread);
     for (index, value) in random_vector.iter().enumerate() {
-        for data_vector in &mut data_array_map {
+        for data_vector in &mut data_matrix {
             let tmp: bool = data_vector[index];
             data_vector[index] = data_vector[*value];
             data_vector[*value] = tmp;
@@ -564,77 +568,22 @@ fn main() {
         for _ in 0..max_training_index {
             random_numbers.push(rng_thread.gen_range(0..max_training_index));
         }
-        for data_vector in &data_array_map {
+        for data_vector in &data_matrix {
             let mut bootstrapped_vector: Vec<bool> = Vec::new();
             for random_number in &random_numbers {
                 bootstrapped_vector.push(data_vector[*random_number]);
             }
             bootstrapped_data.push(bootstrapped_vector);
         }
-        let mut best_cut_value: usize = 0;
-        let mut best_prediction: f32 = 0.0;
-        let mut best_node: Node = Node {
-            gini_impurity: None,
-            feature_index: None,
-            on_true: None,
-            on_false: None,
-            prediction: None,
-        };
-        for cut_value in [
+        let generated_tree: Node = generate_nodes(
+            &Vec::from_iter(0..max_training_index),
+            &bootstrapped_data,
+            &deck_position_less_than_9_data[0..max_training_index].to_vec(),
             (max_training_index as f32 * 0.01) as usize,
-        ] {
-            let generated_tree: Node = generate_nodes(
-                &Vec::from_iter(0..max_training_index),
-                &bootstrapped_data,
-                &deck_position_less_than_9_data[0..max_training_index].to_vec(),
-                cut_value,
-                f32::sqrt(data_array_map.len() as f32) as usize,
-                Vec::new(),
-            );
-            let mut correct_predictions: usize = 0;
-            let mut total_predictions: usize = 0;
-            for index in max_training_index..deck_position_less_than_9_data.len() {
-                total_predictions += 1;
-                let mut vector_data: Vec<bool> = Vec::from([
-                    has_white_data[index],
-                    has_blue_data[index],
-                    has_black_data[index],
-                    has_red_data[index],
-                    has_green_data[index]
-                ]);
-                for land_data in &lands_data {
-                    vector_data.push(land_data[index]);
-                }
-                for creature_data in &creatures_data {
-                    vector_data.push(creature_data[index]);
-                }
-                for instant_data in &instants_data {
-                    vector_data.push(instant_data[index]);
-                }
-                for sorcery_data in &sorceries_data {
-                    vector_data.push(sorcery_data[index]);
-                }
-                for artifact_data in &artifacts_data {
-                    vector_data.push(artifact_data[index]);
-                }
-                for enchantment_data in &enchantments_data {
-                    vector_data.push(enchantment_data[index]);
-                }
-                let prediction: bool = evaluate_data(&generated_tree, vector_data);
-                if prediction == deck_position_less_than_9_data[index] {
-                    correct_predictions += 1;
-                }
-            }
-            let prediction_percentage: f32 = correct_predictions as f32 / total_predictions as f32 * 100.0;
-            println!("Prediction: {:?} for cut {:?}", prediction_percentage, cut_value);
-            if prediction_percentage > best_prediction {
-                best_cut_value = cut_value;
-                best_prediction = prediction_percentage;
-                best_node = generated_tree;
-            }
-        }
-        forest.push(best_node);
-        println!("Prediction %: {:?}\nBest cut value: {:?}", best_prediction, best_cut_value);
+            f32::sqrt(data_matrix.len() as f32) as usize,
+            Vec::new(),
+        );
+        forest.push(generated_tree);
     }
     let mut correct_predictions: usize = 0;
     let mut total_predictions: usize = 0;
@@ -643,30 +592,9 @@ fn main() {
         let mut number_of_false: usize = 0;
         total_predictions += 1;
         for tree in &forest {
-            let mut vector_data: Vec<bool> = Vec::from([
-                has_white_data[index],
-                has_blue_data[index],
-                has_black_data[index],
-                has_red_data[index],
-                has_green_data[index]
-            ]);
-            for land_data in &lands_data {
-                vector_data.push(land_data[index]);
-            }
-            for creature_data in &creatures_data {
-                vector_data.push(creature_data[index]);
-            }
-            for instant_data in &instants_data {
-                vector_data.push(instant_data[index]);
-            }
-            for sorcery_data in &sorceries_data {
-                vector_data.push(sorcery_data[index]);
-            }
-            for artifact_data in &artifacts_data {
-                vector_data.push(artifact_data[index]);
-            }
-            for enchantment_data in &enchantments_data {
-                vector_data.push(enchantment_data[index]);
+            let mut vector_data: Vec<bool> = Vec::new();
+            for data_vector in &data_matrix {
+                vector_data.push(data_vector[index]);
             }
             if evaluate_data(&tree, vector_data) {
                 number_of_true += 1;
