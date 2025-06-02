@@ -36,30 +36,28 @@ struct Node {
     prediction: Option<bool>,
 }
 
-fn has_card_color(deck: &Vec<Value>, color_tag: String) -> Result<bool, &'static str> {
-    for card in deck {
-        let card_attributes: &Value;
-        match card.get("card_attributes") {
-            Some(value) => card_attributes = value,
-            None => return Err("Unable to find card_attributes field in json"),
+fn get_card_type_feature_matrix(players: &Vec<Value>, card_type_value: &str) -> Vec<Vec<bool>> {
+    let mut card_type_count_data: Vec<u8> = Vec::new();
+    for player_index in 0..players.len() {
+        let player_data: &Value;
+        match players[player_index].get("main_deck") {
+            Some(value) => player_data = value,
+            None => panic!("Unable to find main_deck field in json"),
         }
-        let colors_vector: &Vec<Value>;
-        match card_attributes["colors"].as_array() {
-            Some(value) => colors_vector = value,
-            None => return Err("Unable to find colors tag on json"),
+        let deck: &Vec<Value>;
+        match player_data.as_array() {
+            Some(value) => deck = value,
+            None => panic!("Unable to convert deck to Vec: {:?}", player_data), 
         }
-        for card_color in colors_vector {
-            let card_color_string: String;
-            match serde_json::to_string(card_color) {
-                Ok(value) => card_color_string = value,
-                Err(_) => return Err("Unable to convert color to String"),
-            }
-            if card_color_string == color_tag {
-                return Ok(true);
-            }
+        match get_card_type_quantity(deck, card_type_value) {
+            Ok(value) => card_type_count_data.push(value),
+            Err(error) => panic!("{}", error),
         }
     }
-    return Ok(false);
+    let feature_values: Vec<f32> = get_feature_values(&card_type_count_data);
+    println!("Unique {} values: {:?}", card_type_value, feature_values);
+    let feature_data: Vec<Vec<bool>> = get_data_values(&card_type_count_data, feature_values);
+    return get_training_data_from_matrix(&feature_data);
 }
 
 fn panic_on_try_value_exceding_max_tries(try_value: usize, error_message: String) {
@@ -117,29 +115,32 @@ fn get_feature_values(target: &Vec<u8>) -> Vec<f32> {
     return final_vector;
 }
 
-fn get_card_type_quantity(card: &Value, card_type_target: &str) -> Result<u8, &'static str> {
-    let card_attributes: &Value;
-    match card.get("card_attributes") {
-        Some(value) => card_attributes = value,
-        None => return Err("Unable to find card_attributes field in json"),
-    }
-    let card_type: &str;
-    match &card_attributes["card_type"] {
-        Value::String(value) => card_type = value,
-        _ => return Err("Unable to find card_type in json"),
-    }
-    if card_type == card_type_target {
-        let card_quantity_string: &str;
-        match &card["qty"] {
-            Value::String(value) => card_quantity_string = value,
-            _ => return Err("Unable to find qty in json"),
+fn get_card_type_quantity(deck: &Vec<Value>, card_type_target: &str) -> Result<u8, &'static str> {
+    let mut card_type_quantity: u8 = 0;
+    for card in deck {
+        let card_attributes: &Value;
+        match card.get("card_attributes") {
+            Some(value) => card_attributes = value,
+            None => return Err("Unable to find card_attributes field in json"),
         }
-        match card_quantity_string.parse::<u8>() {
-            Ok(value) => return Ok(value),
-            Err(_) => return Err("Unable to parse u8 card quantity"),
+        let card_type: &str;
+        match &card_attributes["card_type"] {
+            Value::String(value) => card_type = value,
+            _ => return Err("Unable to find card_type in json"),
+        }
+        if card_type == card_type_target {
+            let card_quantity_string: &str;
+            match &card["qty"] {
+                Value::String(value) => card_quantity_string = value,
+                _ => return Err("Unable to find qty in json"),
+            }
+            match card_quantity_string.parse::<u8>() {
+                Ok(value) => card_type_quantity += value,
+                Err(_) => return Err("Unable to parse u8 card quantity"),
+            }
         }
     }
-    return Ok(0);
+    return Ok(card_type_quantity);
 }
 
 fn correctness_score(
@@ -427,130 +428,71 @@ fn main() {
             panic!("N of players not 32");
         }
         for player_index in 1..json_players.len() {
-            println!("{}", json_players[player_index].to_string());
             players.push(json_players[player_index].clone());
         }
     }
     println!("Html players are: {:?}", players.len());
-    let mut has_white_data: Vec<bool> = Vec::new();
-    let mut has_blue_data: Vec<bool> = Vec::new();
-    let mut has_black_data: Vec<bool> = Vec::new();
-    let mut has_red_data: Vec<bool> = Vec::new();
-    let mut has_green_data: Vec<bool> = Vec::new();
-    let mut lands_count_data: Vec<u8> = Vec::new();
-    let mut creatures_count_data: Vec<u8> = Vec::new();
-    let mut instants_count_data: Vec<u8> = Vec::new();
-    let mut sorceries_count_data: Vec<u8> = Vec::new();
-    let mut artifacts_count_data: Vec<u8> = Vec::new();
-    let mut enchantments_count_data: Vec<u8> = Vec::new();
+    let mut data_matrix: Vec<Vec<bool>> = Vec::new();
+    for color_value in [
+        format!("{}{}", COLOR_TAG, "WHITE"),
+        format!("{}{}", COLOR_TAG, "BLUE"),
+        format!("{}{}", COLOR_TAG, "BLACK"),
+        format!("{}{}", COLOR_TAG, "RED"),
+        format!("{}{}", COLOR_TAG, "GREEN"),
+    ] {
+        let mut has_color_data: Vec<bool> = Vec::new();
+        for player_index in 0..players.len() {
+            let player_data: &Value;
+            match players[player_index].get("main_deck") {
+                Some(value) => player_data = value,
+                None => panic!("Unable to find main_deck field in json"),
+            }
+            let deck: &Vec<Value>;
+            match player_data.as_array() {
+                Some(value) => deck = value,
+                None => panic!("Unable to convert deck to Vec: {:?}", player_data), 
+            }
+            let mut has_target_color: bool = false;
+            for card in deck {
+                let card_attributes: &Value;
+                match card.get("card_attributes") {
+                    Some(value) => card_attributes = value,
+                    None => panic!("Unable to find card_attributes field in json"),
+                }
+                let colors_vector: &Vec<Value>;
+                match card_attributes["colors"].as_array() {
+                    Some(value) => colors_vector = value,
+                    None => panic!("Unable to find colors tag on json"),
+                }
+                for card_color in colors_vector {
+                    let card_color_string: String;
+                    match serde_json::to_string(card_color) {
+                        Ok(value) => card_color_string = value,
+                        Err(_) => panic!("Unable to convert color to String"),
+                    }
+                    if card_color_string == color_value {
+                        has_target_color = true;
+                    }
+                }
+            }
+            has_color_data.push(has_target_color);
+        }
+        data_matrix.push(has_color_data.to_owned());
+    }
+    println!("0:W, 1:U, 2:B, 3:R, 4:G");
+    data_matrix.append(&mut get_card_type_feature_matrix(&players, "LAND  "));
+    data_matrix.append(&mut get_card_type_feature_matrix(&players, "ISCREA"));
+    data_matrix.append(&mut get_card_type_feature_matrix(&players, "INSTNT"));
+    data_matrix.append(&mut get_card_type_feature_matrix(&players, "SORCRY"));
+    data_matrix.append(&mut get_card_type_feature_matrix(&players, "ARTFCT"));
+    data_matrix.append(&mut get_card_type_feature_matrix(&players, "ENCHMT"));
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
     for player_index in 0..players.len() {
         deck_position_less_than_9_data.push(decks_rank[player_index] < 8);
-        let player_data: &Value;
-        match players[player_index].get("main_deck") {
-            Some(value) => player_data = value,
-            None => panic!("Unable to find main_deck field in json"),
-        }
-        let deck: &Vec<Value>;
-        match player_data.as_array() {
-            Some(value) => deck = value,
-            None => panic!("Unable to convert deck to Vec: {:?}", player_data), 
-        }
-        match has_card_color(deck, format!("{}{}", COLOR_TAG, "WHITE")) {
-            Ok(value) => has_white_data.push(value),
-            Err(error) => panic!("{}", error),
-        }
-        match has_card_color(deck, format!("{}{}", COLOR_TAG, "BLUE")) {
-            Ok(value) => has_blue_data.push(value),
-            Err(error) => panic!("{}", error),
-        }
-        match has_card_color(deck, format!("{}{}", COLOR_TAG, "BLACK")) {
-            Ok(value) => has_black_data.push(value),
-            Err(error) => panic!("{}", error),
-        }
-        match has_card_color(deck, format!("{}{}", COLOR_TAG, "RED")) {
-            Ok(value) => has_red_data.push(value),
-            Err(error) => panic!("{}", error),
-        }
-        match has_card_color(deck, format!("{}{}", COLOR_TAG, "GREEN")) {
-            Ok(value) => has_green_data.push(value),
-            Err(error) => panic!("{}", error),
-        }
-        let mut lands_count: u8 = 0;
-        let mut creatures_count: u8 = 0;
-        let mut instants_count: u8 = 0;
-        let mut sorceries_count: u8 = 0;
-        let mut artifacts_count: u8 = 0;
-        let mut enchantments_count: u8 = 0;
-        for card in deck {
-            match get_card_type_quantity(card, "LAND  ") {
-                Ok(value) => lands_count += value,
-                Err(error) => panic!("{}", error),
-            }
-            match get_card_type_quantity(card, "ISCREA") {
-                Ok(value) => creatures_count += value,
-                Err(error) => panic!("{}", error),
-            }
-            match get_card_type_quantity(card, "INSTNT") {
-                Ok(value) => instants_count += value,
-                Err(error) => panic!("{}", error),
-            }
-            match get_card_type_quantity(card, "SORCRY") {
-                Ok(value) => sorceries_count += value,
-                Err(error) => panic!("{}", error),
-            }
-            match get_card_type_quantity(card, "ARTFCT") {
-                Ok(value) => artifacts_count += value,
-                Err(error) => panic!("{}", error),
-            }
-            match get_card_type_quantity(card, "ENCHMT") {
-                Ok(value) => enchantments_count += value,
-                Err(error) => panic!("{}", error),
-            }
-        }
-        lands_count_data.push(lands_count);
-        creatures_count_data.push(creatures_count);
-        instants_count_data.push(instants_count);
-        sorceries_count_data.push(sorceries_count);
-        artifacts_count_data.push(artifacts_count);
-        enchantments_count_data.push(enchantments_count);
     }
-    let feature_lands_values: Vec<f32> = get_feature_values(&lands_count_data);
-    let feature_creatures_values: Vec<f32> = get_feature_values(&creatures_count_data);
-    let feature_instants_values: Vec<f32> = get_feature_values(&instants_count_data);
-    let feature_sorceries_values: Vec<f32> = get_feature_values(&sorceries_count_data);
-    let feature_artifacts_values: Vec<f32> = get_feature_values(&artifacts_count_data);
-    let feature_enchantments_values: Vec<f32> = get_feature_values(&enchantments_count_data);
-    println!("0:W, 1:U, 2:B, 3:R, 4:G");
-    println!("Unique lands values: {:?}", feature_lands_values);
-    println!("Unique creatures values: {:?}", feature_creatures_values);
-    println!("Unique instants values: {:?}", feature_instants_values);
-    println!("Unique sorceries values: {:?}", feature_sorceries_values);
-    println!("Unique artifacts values: {:?}", feature_artifacts_values);
-    println!("Unique enchantments values: {:?}", feature_enchantments_values);
-    let lands_data: Vec<Vec<bool>> = get_data_values(&lands_count_data, feature_lands_values);
-    let creatures_data: Vec<Vec<bool>> = get_data_values(&creatures_count_data, feature_creatures_values);
-    let instants_data: Vec<Vec<bool>> = get_data_values(&instants_count_data, feature_instants_values);
-    let sorceries_data: Vec<Vec<bool>> = get_data_values(&sorceries_count_data, feature_sorceries_values);
-    let artifacts_data: Vec<Vec<bool>> = get_data_values(&artifacts_count_data, feature_artifacts_values);
-    let enchantments_data: Vec<Vec<bool>> =
-        get_data_values(&enchantments_count_data, feature_enchantments_values);
     let max_training_index: usize =
         (deck_position_less_than_9_data.len() as f32 * TRAINING_PERCENTAGE) as usize;
     println!("N of training decks: {:?}", max_training_index);
-    let mut data_matrix: Vec<Vec<bool>> = Vec::from([
-        has_white_data.to_owned(),
-        has_blue_data.to_owned(),
-        has_black_data.to_owned(),
-        has_red_data.to_owned(),
-        has_green_data.to_owned(),
-    ]);
-    data_matrix.append(&mut get_training_data_from_matrix(&lands_data));
-    data_matrix.append(&mut get_training_data_from_matrix(&creatures_data));
-    data_matrix.append(&mut get_training_data_from_matrix(&instants_data));
-    data_matrix.append(&mut get_training_data_from_matrix(&sorceries_data));
-    data_matrix.append(&mut get_training_data_from_matrix(&artifacts_data));
-    data_matrix.append(&mut get_training_data_from_matrix(&enchantments_data));
     let mut rng_thread: rand::rngs::ThreadRng = rand::thread_rng();
     let mut random_vector: Vec<usize> = Vec::from_iter(0..deck_position_less_than_9_data.len());
     random_vector.shuffle(&mut rng_thread);
