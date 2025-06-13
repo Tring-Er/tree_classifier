@@ -229,9 +229,9 @@ fn main() {
     let mut urls: Vec<String> = Vec::new();
     let url_queries: Vec<&str> = Vec::from([
         "04-0412763152",
-/*        "04-0512763169",
+        "04-0512763169",
         "04-0612763187",
-        "04-1112765765",
+/*        "04-1112765765",
         "04-1212765782",
         "04-1812769888",
         "04-1912769905",
@@ -528,7 +528,7 @@ fn main() {
             Some(value) => deck = value,
             None => panic!("Unable to convert deck to Vec"), 
         }
-        let mut cards_cost: Vec<u8> = Vec::new();
+        let mut cards_cost: Vec<usize> = Vec::new();
         for card in deck {
             let card_quantity_string: &str;
             match &card["qty"] {
@@ -540,26 +540,34 @@ fn main() {
                 Ok(value) => card_quantity = value,
                 Err(error) => panic!("Unable to parse {:?} to u8: {:?}", card_quantity_string, error),
             }
+            let option_card_attributes: Option<&Value> = card.get("card_attributes");
+            print_formatted_log_string(format!("Option card attributes: {:?}", option_card_attributes));
             let card_attributes: &Value;
-            match card.get("card_attributes") {
+            match option_card_attributes {
                 Some(value) => card_attributes = value,
                 None => panic!("Unable to find card_attributes field in json"),
             }
-            let card_cost_string: &str;
-            match &card_attributes["card_type"] {
-                Value::String(value) => card_cost_string = value,
-                _ => panic!("Unable to find cost field in json"),
+            let value_card_cost: &Value = &card_attributes["cost"];
+            print_formatted_log_string(format!("Cost from card attribute: {:?}", value_card_cost));
+            let option_card_cost_string: Option<&str>;
+            match value_card_cost {
+                Value::String(value) => option_card_cost_string = Some(value),
+                _ => option_card_cost_string = None,
             }
-            let card_cost: u8;
-            match card_cost_string.parse::<u8>() {
-                Ok(value) => card_cost = value,
-                Err(error) => panic!("Unable to parse {:?} to u8: {:?}", card_cost_string, error),
-            }
-            for _ in 0..card_quantity {
-                cards_cost.push(card_cost);
+            if let Some(card_cost_string) = option_card_cost_string {
+                let result_card_cost: Result<usize, ParseIntError> = card_cost_string.parse::<usize>();
+                print_formatted_log_string(format!("Parsed result card cost: {:?}", result_card_cost));
+                let card_cost: usize;
+                match result_card_cost {
+                    Ok(value) => card_cost = value,
+                    Err(error) => panic!("Unable to parse {:?} to u8: {:?}", card_cost_string, error),
+                }
+                for _ in 0..card_quantity {
+                    cards_cost.push(card_cost);
+                }
             }
         }
-        let cards_cost_sum: f32 = cards_cost.iter().sum() as f32;
+        let cards_cost_sum: f32 = cards_cost.iter().sum::<usize>() as f32;
         card_average_cost_data.push(cards_cost_sum / (cards_cost.len() as f32));
     }
     let mut tmp_vector: Vec<f32> = Vec::new();
@@ -575,11 +583,13 @@ fn main() {
             tmp_vector.push(*target_value);
         }
     }
-    for vector_index in 0..tmp_vector.len() - 1 {
-        if tmp_vector[vector_index] > tmp_vector[vector_index + 1] {
-            let tmp_value: f32 = tmp_vector[vector_index];
-            tmp_vector[vector_index] = tmp_vector[vector_index + 1];
-            tmp_vector[vector_index + 1] = tmp_value;
+    for vector_index in 0..tmp_vector.len() {
+        for second_vector_index in 0..tmp_vector.len() {
+            if tmp_vector[vector_index] < tmp_vector[second_vector_index] {
+                let tmp_value: f32 = tmp_vector[vector_index];
+                tmp_vector[vector_index] = tmp_vector[second_vector_index];
+                tmp_vector[second_vector_index] = tmp_value;
+            }
         }
     }
     let mut feature_vector: Vec<f32> = Vec::new();
@@ -587,25 +597,16 @@ fn main() {
         let value: f32 = (tmp_vector[vector_index - 1] as f32 + tmp_vector[vector_index] as f32) / 2.0;
         feature_vector.push(value);
     }
-    println!("Unique {} values: {:?}", card_type, feature_vector);
+    println!("Unique Mana Value Average values: {:?}", feature_vector);
     let mut feature_data: Vec<Vec<bool>> = Vec::new();
     for unique_value in feature_vector {
         let mut unique_value_data: Vec<bool> = Vec::new();
-        for target_value in &card_type_count_data {
-            let tmp: bool = (*target_value as f32) < unique_value;
-            unique_value_data.push(tmp);
+        for target_value in &card_average_cost_data {
+            unique_value_data.push((*target_value as f32) < unique_value);
         }
         feature_data.push(unique_value_data);
     }
-    let mut training_data: Vec<Vec<bool>> = Vec::new();
-    for data_values in &feature_data {
-        let mut data_vector: Vec<bool> = Vec::new();
-        for value in data_values {
-            data_vector.push(*value);
-        }
-        training_data.push(data_vector);
-    }
-    data_matrix.append(&mut training_data);
+    data_matrix.append(&mut feature_data);
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
     for player_index in 0..players.len() {
         deck_position_less_than_9_data.push(decks_rank[player_index] < 8);
