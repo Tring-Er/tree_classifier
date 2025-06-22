@@ -19,7 +19,7 @@ const RANK_KEY: &str = "rank";
 const JSON_DECK_LISTS_KEY: &str = "decklists";
 const COLOR_TAG: &str = "COLOR_";
 const TRAINING_PERCENTAGE: f32 = 0.8;
-const VERBOSE_LOG: bool = true;
+const VERBOSE_LOG: bool = false;
 
 use std::{num::ParseIntError, thread, time::Duration};
 
@@ -231,7 +231,7 @@ fn main() {
         "04-0412763152",
         "04-0512763169",
         "04-0612763187",
-/*        "04-1112765765",
+        "04-1112765765",
         "04-1212765782",
         "04-1812769888",
         "04-1912769905",
@@ -252,7 +252,7 @@ fn main() {
         "05-2412782313",
         "05-2512782331",
         "05-3012782641",
-        "05-3112782655",*/
+        "05-3112782655",
     ]);
     for url_query in &url_queries {
         urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
@@ -372,180 +372,104 @@ fn main() {
     }
     println!("Html players are: {:?}", players.len());
     let mut data_matrix: Vec<Vec<bool>> = Vec::new();
-    for color_value in [
+    let colors_array: [String; 6] = [
         format!("{}{}", COLOR_TAG, "WHITE"),
         format!("{}{}", COLOR_TAG, "BLUE"),
         format!("{}{}", COLOR_TAG, "BLACK"),
         format!("{}{}", COLOR_TAG, "RED"),
         format!("{}{}", COLOR_TAG, "GREEN"),
         format!("{}{}", COLOR_TAG, "COLORLESS"),
-    ] {
-        let mut has_color_data: Vec<bool> = Vec::new();
-        for player_index in 0..players.len() {
-            let player_data: &Value;
-            match players[player_index].get("main_deck") {
-                Some(value) => player_data = value,
-                None => panic!("Unable to find main_deck field in json"),
+    ];
+    let mut color_data_matrix: Vec<Vec<bool>> = Vec::new();
+    for _ in 0..colors_array.len() {
+        color_data_matrix.push(Vec::new());
+    }
+    let cards_type_array: [&str; 6] = ["LAND  ", "ISCREA", "INSTNT", "SORCRY", "ARTFCT", "ENCHMT"];
+    let mut card_type_matrix: Vec<Vec<u8>> = Vec::new();
+    for _ in 0..cards_type_array.len() {
+        card_type_matrix.push(Vec::new());
+    }
+    let mut card_average_cost_data: Vec<f32> = Vec::new();
+    for player_index in 0..players.len() {
+        let player_data_json: &Value;
+        match players[player_index].get("main_deck") {
+            Some(value) => player_data_json = value,
+            None => panic!("Unable to find main_deck field in json"),
+        }
+        let deck: &Vec<Value>;
+        let option_deck: Option<&Vec<Value>> = player_data_json.as_array();
+        print_formatted_log_string(format!("Player's deck: {:?}", option_deck));
+        match option_deck {
+            Some(value) => deck = value,
+            None => panic!("Unable to convert deck to Vec: {:?}", player_data_json),
+        }
+        let mut player_colors_data: Vec<bool> = Vec::new();
+        for _ in 0..colors_array.len() {
+            player_colors_data.push(false);
+        }
+        let mut player_card_type_count_data: Vec<u8> = Vec::new();
+        for _ in 0..cards_type_array.len() {
+            player_card_type_count_data.push(0);
+        }
+        let mut cards_cost: Vec<usize> = Vec::new();
+        for card in deck {
+            let card_attributes: &Value;
+            let option_card_attributes: Option<&Value> = card.get("card_attributes");
+            print_formatted_log_string(format!("Card attributes: {:?}", option_card_attributes));
+            match option_card_attributes {
+                Some(value) => card_attributes = value,
+                None => panic!("Unable to find card_attributes field in json"),
             }
-            let deck: &Vec<Value>;
-            let option_deck: Option<&Vec<Value>> = player_data.as_array();
-            print_formatted_log_string(format!("Player's deck: {:?}", option_deck));
-            match option_deck {
-                Some(value) => deck = value,
-                None => panic!("Unable to convert deck to Vec: {:?}", player_data),
+            let option_colors_vector: Option<&Vec<Value>> = card_attributes["colors"].as_array();
+            print_formatted_log_string(format!("Colors in array: {:?}", option_colors_vector));
+            let mut colors_vector: &Vec<Value> = &Vec::new();
+            match option_colors_vector {
+                Some(value) => colors_vector = value,
+                None => {
+                    println!("!WARNING A card without the color field has been found, data about this card will be incomplete");
+                }
             }
-            let mut has_target_color: bool = false;
-            for card in deck {
-                let card_attributes: &Value;
-                let option_card_attributes: Option<&Value> = card.get("card_attributes");
-                print_formatted_log_string(format!("Card attributes: {:?}", option_card_attributes));
-                match option_card_attributes {
-                    Some(value) => card_attributes = value,
-                    None => panic!("Unable to find card_attributes field in json"),
-                }
-                let option_colors_vector: Option<&Vec<Value>> = card_attributes["colors"].as_array();
-                print_formatted_log_string(format!("Colors in array: {:?}", option_colors_vector));
-                let mut colors_vector: &Vec<Value> = &Vec::new();
-                match option_colors_vector {
-                    Some(value) => colors_vector = value,
-                    None => {
-                        println!("!WARNING A card without the color field has been found, data about this card will be incomplete");
-                    }
-                }
+            for color_index in 0..colors_array.len() {
                 for card_color in colors_vector {
                     let card_color_string: String;
                     match serde_json::to_string(card_color) {
                         Ok(value) => card_color_string = value,
                         Err(_) => panic!("Unable to convert color to String"),
                     }
-                    if card_color_string == color_value {
-                        has_target_color = true;
+                    if card_color_string == colors_array[color_index] {
+                        player_colors_data[color_index] = true;
                     }
                 }
             }
-            has_color_data.push(has_target_color);
-        }
-        data_matrix.push(has_color_data.to_owned());
-    }
-    println!("0:W, 1:U, 2:B, 3:R, 4:G, 5:C");
-    for card_type in ["LAND  ", "ISCREA", "INSTNT", "SORCRY", "ARTFCT", "ENCHMT"] {
-        let mut card_type_count_data: Vec<u8> = Vec::new();
-        for player_index in 0..players.len() {
-            let player_data: &Value;
-            match players[player_index].get("main_deck") {
-                Some(value) => player_data = value,
-                None => panic!("Unable to find main_deck field in json"),
-            }
-            let deck: &Vec<Value>;
-            match player_data.as_array() {
-                Some(value) => deck = value,
-                None => panic!("Unable to convert deck to Vec"), 
-            }
-            let mut card_type_quantity: u8 = 0;
-            for card in deck {
-                let card_attributes: &Value;
-                match card.get("card_attributes") {
-                    Some(value) => card_attributes = value,
-                    None => panic!("Unable to find card_attributes field in json"),
-                }
-                let optional_card_type: Option<&str>;
-                match &card_attributes["card_type"] {
-                    Value::String(value) => optional_card_type = Some(value),
-                    _ => optional_card_type = None,
-                }
-                if let Some(card_type_value) = optional_card_type {
-                    if card_type_value == card_type {
-                        let card_quantity_string: &str;
-                        match &card["qty"] {
-                            Value::String(value) => card_quantity_string = value,
-                            _ => panic!("Unable to find qty in json"),
-                        }
-                        let result_card_quantity: Result<u8, ParseIntError> =
-                            card_quantity_string.parse::<u8>();
-                        print_formatted_log_string(
-                            format!(
-                                "Result card quantity: {:?}",
-                                result_card_quantity,
-                            )
-                        );
-                        match card_quantity_string.parse::<u8>() {
-                            Ok(value) => card_type_quantity += value,
-                            Err(_) => panic!("Unable to parse u8 card quantity"),
-                        }
-                    }
-                }
-            }
-            card_type_count_data.push(card_type_quantity);
-        }
-        let mut tmp_vector: Vec<u8> = Vec::new();
-        for target_value in &card_type_count_data {
-            let mut contains_value: bool = false;
-            for unique_value in &tmp_vector {
-                if *target_value == *unique_value {
-                    contains_value = true;
-                    break;
-                }
-            }
-            if !contains_value {
-                tmp_vector.push(*target_value);
-            }
-        }
-        tmp_vector.sort();
-        let mut feature_vector: Vec<f32> = Vec::new();
-        for vector_index in 1..tmp_vector.len() {
-            let value: f32 = (tmp_vector[vector_index - 1] as f32 + tmp_vector[vector_index] as f32) / 2.0;
-            feature_vector.push(value);
-        }
-        println!("Unique {} values: {:?}", card_type, feature_vector);
-        let mut feature_data: Vec<Vec<bool>> = Vec::new();
-        for unique_value in feature_vector {
-            let mut unique_value_data: Vec<bool> = Vec::new();
-            for target_value in &card_type_count_data {
-                let tmp: bool = (*target_value as f32) < unique_value;
-                unique_value_data.push(tmp);
-            }
-            feature_data.push(unique_value_data);
-        }
-        let mut training_data: Vec<Vec<bool>> = Vec::new();
-        for data_values in &feature_data {
-            let mut data_vector: Vec<bool> = Vec::new();
-            for value in data_values {
-                data_vector.push(*value);
-            }
-            training_data.push(data_vector);
-        }
-        data_matrix.append(&mut training_data);
-    }
-    let mut card_average_cost_data: Vec<f32> = Vec::new();
-    for player in &players {
-        let player_data: &Value;
-        match player.get("main_deck") {
-            Some(value) => player_data = value,
-            None => panic!("Unable to find main_deck field in json"),
-        }
-        let deck: &Vec<Value>;
-        match player_data.as_array() {
-            Some(value) => deck = value,
-            None => panic!("Unable to convert deck to Vec"), 
-        }
-        let mut cards_cost: Vec<usize> = Vec::new();
-        for card in deck {
             let card_quantity_string: &str;
             match &card["qty"] {
                 Value::String(value) => card_quantity_string = value,
-                _ => panic!("Unable to find qty field in json"),
+                _ => panic!("Unable to find qty in json"),
+            }
+            let result_card_quantity: Result<u8, ParseIntError> =
+                card_quantity_string.parse::<u8>();
+            print_formatted_log_string(
+                format!(
+                    "Result card quantity: {:?}",
+                    result_card_quantity,
+                )
+            );
+            let optional_card_type: Option<&str>;
+            match &card_attributes["card_type"] {
+                Value::String(value) => optional_card_type = Some(value),
+                _ => optional_card_type = None,
             }
             let card_quantity: u8;
             match card_quantity_string.parse::<u8>() {
                 Ok(value) => card_quantity = value,
                 Err(error) => panic!("Unable to parse {:?} to u8: {:?}", card_quantity_string, error),
             }
-            let option_card_attributes: Option<&Value> = card.get("card_attributes");
-            print_formatted_log_string(format!("Option card attributes: {:?}", option_card_attributes));
-            let card_attributes: &Value;
-            match option_card_attributes {
-                Some(value) => card_attributes = value,
-                None => panic!("Unable to find card_attributes field in json"),
+            if let Some(card_type_value) = optional_card_type {
+                for card_type_index in 0..cards_type_array.len() {
+                    if card_type_value == cards_type_array[card_type_index] {
+                        player_card_type_count_data[card_type_index] += card_quantity;
+                    }
+                }
             }
             let value_card_cost: &Value = &card_attributes["cost"];
             print_formatted_log_string(format!("Cost from card attribute: {:?}", value_card_cost));
@@ -567,9 +491,61 @@ fn main() {
                 }
             }
         }
+        for feature_index in 0..colors_array.len() {
+            color_data_matrix[feature_index].push(player_colors_data[feature_index]);
+        }
+        for feature_index in 0..player_card_type_count_data.len() {
+            card_type_matrix[feature_index].push(player_card_type_count_data[feature_index]);
+        }
         let cards_cost_sum: f32 = cards_cost.iter().sum::<usize>() as f32;
         card_average_cost_data.push(cards_cost_sum / (cards_cost.len() as f32));
     }
+    println!("{:?}", colors_array);
+    data_matrix.append(&mut color_data_matrix);
+    let mut unique_card_type_average_matrix: Vec<Vec<f32>> = Vec::new();
+    for card_type_index in 0..card_type_matrix.len() {
+        let mut tmp_vector: Vec<u8> = Vec::new();
+        for target_value in &card_type_matrix[card_type_index] {
+            let mut contains_value: bool = false;
+            for unique_value in &tmp_vector {
+                if target_value == unique_value {
+                    contains_value = true;
+                    break;
+                }
+            }
+            if !contains_value {
+                tmp_vector.push(*target_value);
+            }
+        }
+        tmp_vector.sort();
+        let mut feature_vector: Vec<f32> = Vec::new();
+        for vector_index in 1..tmp_vector.len() {
+            let value: f32 = (tmp_vector[vector_index - 1] as f32 + tmp_vector[vector_index] as f32) / 2.0;
+            feature_vector.push(value);
+        }
+        unique_card_type_average_matrix.push(feature_vector);
+    }
+    for card_type_index in 0..cards_type_array.len() {
+        println!(
+            "Unique {} values: {:?}",
+            &cards_type_array[card_type_index],
+            &unique_card_type_average_matrix[card_type_index],
+        );
+    }
+    let mut card_type_data_matrix: Vec<Vec<bool>> = Vec::new();
+    for card_type_index in 0..card_type_matrix.len() {
+        for unique_value_index in 0..unique_card_type_average_matrix[card_type_index].len() {
+            let mut tmp_vector: Vec<bool> = Vec::new();
+            for player_index in 0..card_type_matrix[card_type_index].len() {
+                tmp_vector.push(
+                    (card_type_matrix[card_type_index][player_index] as f32) <
+                    unique_card_type_average_matrix[card_type_index][unique_value_index]
+                );
+            }
+            card_type_data_matrix.push(tmp_vector);
+        }
+    }
+    data_matrix.append(&mut card_type_data_matrix);
     let mut tmp_vector: Vec<f32> = Vec::new();
     for target_value in &card_average_cost_data {
         let mut contains_value: bool = false;
