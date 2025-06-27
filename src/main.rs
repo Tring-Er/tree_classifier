@@ -20,10 +20,14 @@ const JSON_DECK_LISTS_KEY: &str = "decklists";
 const COLOR_TAG: &str = "COLOR_";
 const TRAINING_PERCENTAGE: f32 = 0.8;
 const VERBOSE_LOG: bool = false;
+const USE_CACHE: bool = true;
+const CACHE_PATH: &str = "cache";
+const PLAYER_SEPARATOR: &str = "=-=-=PLAYER SEPARATOR=-=-=";
+const RANK_SEPARATOR: &str = "=-=-=RANK SEPARATOR=-=-=";
 
-use std::{num::ParseIntError, thread, time::Duration};
+use std::{fs as file_system, io::Write, num::ParseIntError, thread, time::Duration};
 
-use serde_json::Value;
+use serde_json::{Error, Value};
 use reqwest::blocking::{Client, Response};
 use rand::{Rng, seq::SliceRandom};
 
@@ -226,148 +230,192 @@ fn generate_nodes(
 
 
 fn main() {
-    let mut urls: Vec<String> = Vec::new();
-    let url_queries: Vec<&str> = Vec::from([
-        "04-0412763152",
-        "04-0512763169",
-        "04-0612763187",
-        "04-1112765765",
-        "04-1212765782",
-        "04-1812769888",
-        "04-1912769905",
-        "04-2012769922",
-        "04-2512772646",
-        "04-2612772667",
-        "04-2712772689",
-        "05-0212774478",
-        "05-0312774499",
-        "05-0412774521",
-        "05-0912777329",
-        "05-1012777346",
-        "05-1112777364",
-        "05-1612780132",
-        "05-1712780149",
-        "05-1812780167",
-        "05-2312782299",
-        "05-2412782313",
-        "05-2512782331",
-        "05-3012782641",
-        "05-3112782655",
-    ]);
-    for url_query in &url_queries {
-        urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
-    }
     let mut players: Vec<Value> = Vec::new();
     let mut decks_rank: Vec<u64> = Vec::new();
-    for url_index in 0..url_queries.len() {
-        let url: &str = &urls[url_index];
-        println!("Requesting url: {:?}", url);
-        let client: Client = Client::new();
-        let mut raw_decks_json: String = String::new();
-        for try_value in 1..=MAX_TRIES {
-            println!("Try {:?}", try_value);
-            thread::sleep(Duration::from_secs(7));
-            let result_response: Result<Response, reqwest::Error> = client
-                .get(url)
-                .timeout(Duration::from_secs(60))
-                .header("Host", HOST)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
-                .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .header("Accept-Language", "en-Us,en;q=0.5")
-                .header("Accept-Encoding", "gzip, deflate, br, zstd")
-                .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
-                .header("Sec-GPC", "1")
-                .header("Connection", "keep-alive")
-                .header("Cookie", COOKIES)
-                .header("Upgrade-Insecure-Requests", "1")
-                .header("Sec-Fetch-Dest", "document")
-                .header("Sec-Fetch-Mode", "navigate")
-                .header("Sec-Fetch-Site", "same-origin")
-                .header("Sec-Fetch-User", "?1")
-                .header("Priority", "u=0, i")
-                .send();
-            let response: Response;
-            match result_response {
-                Ok(value) => response = value,
-                Err(error) => {
-                    panic_on_try_value_exceding_max_tries(
-                        try_value,
-                        format!("Unable to get the response: {:?}", error),
-                    );
-                    continue;
+    if USE_CACHE {
+        match file_system::exists(CACHE_PATH) {
+            Ok(false) | Err(_) =>
+                panic!("Cache file does not exists or the program has no permisions to ope it"),
+            _ => ()
+        }
+        let cached_players: String;
+        match file_system::read_to_string(CACHE_PATH) {
+            Ok(file_content) => cached_players = file_content,
+            Err(error) => panic!("Unable to read cache file: {:?}", error),
+        }
+        let mut cached_players: Vec<&str> = Vec::from_iter(cached_players.split(PLAYER_SEPARATOR));
+        cached_players.pop();
+        for cached_player in cached_players {
+            let player_data: Vec<&str> = Vec::from_iter(cached_player.split(RANK_SEPARATOR));
+            match serde_json::from_str::<Value>(player_data[0]) {
+                Ok(player_value) => players.push(player_value),
+                Err(error) => panic!("Unable to parse a player from cache: {:?}", error),
+            }
+            match player_data[1].parse::<u64>() {
+                Ok(value) => decks_rank.push(value),
+                Err(error) => panic!("Unable to parse &str to u64: {:?}", error),
+            }
+        }
+    } else {
+        if let Err(error) = file_system::remove_file(CACHE_PATH) {
+            panic!("Unable to delete cache file: {:?}", error);
+        }
+        let mut cache_file: file_system::File;
+        match file_system::File::create(CACHE_PATH) {
+            Ok(value) => cache_file = value,
+            Err(error) => panic!("Unable to create or open cache file: {}", error),
+        }
+        let mut urls: Vec<String> = Vec::new();
+        let url_queries: Vec<&str> = Vec::from([
+            "04-0412763152",
+            "04-0512763169",
+            "04-0612763187",
+            "04-1112765765",
+            "04-1212765782",
+            "04-1812769888",
+            "04-1912769905",
+            "04-2012769922",
+            "04-2512772646",
+            "04-2612772667",
+            "04-2712772689",
+            "05-0212774478",
+            "05-0312774499",
+            "05-0412774521",
+            "05-0912777329",
+            "05-1012777346",
+            "05-1112777364",
+            "05-1612780132",
+            "05-1712780149",
+            "05-1812780167",
+            "05-2312782299",
+            "05-2412782313",
+            "05-2512782331",
+            "05-3012782641",
+            "05-3112782655",
+        ]);
+        for url_query in &url_queries {
+            urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
+        }
+        for url_index in 0..url_queries.len() {
+            let url: &str = &urls[url_index];
+            println!("Requesting url: {:?}", url);
+            let client: Client = Client::new();
+            let mut raw_decks_json: String = String::new();
+            for try_value in 1..=MAX_TRIES {
+                println!("Try {:?}", try_value);
+                thread::sleep(Duration::from_secs(7));
+                let result_response: Result<Response, reqwest::Error> = client
+                    .get(url)
+                    .timeout(Duration::from_secs(60))
+                    .header("Host", HOST)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
+                    .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    .header("Accept-Language", "en-Us,en;q=0.5")
+                    .header("Accept-Encoding", "gzip, deflate, br, zstd")
+                    .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
+                    .header("Sec-GPC", "1")
+                    .header("Connection", "keep-alive")
+                    .header("Cookie", COOKIES)
+                    .header("Upgrade-Insecure-Requests", "1")
+                    .header("Sec-Fetch-Dest", "document")
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .header("Sec-Fetch-Site", "same-origin")
+                    .header("Sec-Fetch-User", "?1")
+                    .header("Priority", "u=0, i")
+                    .send();
+                let response: Response;
+                match result_response {
+                    Ok(value) => response = value,
+                    Err(error) => {
+                        panic_on_try_value_exceding_max_tries(
+                            try_value,
+                            format!("Unable to get the response: {:?}", error),
+                        );
+                        continue;
+                    }
+                }
+                let page_html: String;
+                match response.text() {
+                    Ok(value) => page_html = value,
+                    Err(error) => {
+                        panic_on_try_value_exceding_max_tries(
+                            try_value,
+                            format!("Unable to find text of the response: {:?}", error),
+                        );
+                        continue;
+                    }
+                }
+                let first_index: usize;
+                match page_html.find(FIRST_INDEX_STRING) {
+                    Some(value) => first_index = value,
+                    None => {
+                        panic_on_try_value_exceding_max_tries(
+                            try_value,
+                            format!("{:?}\nUnable to find json in html document", page_html),
+                        );
+                        continue;
+                    }
+                }
+                let second_index: usize;
+                match page_html.find(r#"window.MTGO.decklists.type = "#) {
+                    Some(value) => second_index = value,
+                    None => {
+                        panic_on_try_value_exceding_max_tries(
+                            try_value,
+                            format!("{:?}\nUnable to find json in html document", page_html),
+                        );
+                        continue;
+                    }
+                }
+                raw_decks_json =
+                    page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string();
+                break;
+            }
+            let json_data: Value;
+            match serde_json::from_str::<Value>(&raw_decks_json) {
+                Ok(parsed_data) => json_data = parsed_data,
+                Err(error) => panic!("Unable to parse json: {:?}", error),
+            };
+            let optional_standings: Option<&Vec<Value>> = json_data[STANDINGS_KEY].as_array();
+            print_formatted_log_string(format!("Standings as array: {:?}", optional_standings));
+            let json_standings: Vec<&Value>;
+            match optional_standings {
+                Some(value) => json_standings = Vec::from_iter(value),
+                None => panic!("Unable to read key {:?} from json", STANDINGS_KEY),
+            }
+            for json_standing in json_standings {
+                let standing_value: &str;
+                match &json_standing[RANK_KEY] {
+                    Value::String(value) => standing_value = value,
+                    _ => panic!("Unable to read key {:?} from json", RANK_KEY),
+                }
+                match standing_value.parse::<u64>() {
+                    Ok(parsed_rank_value) => decks_rank.push(parsed_rank_value),
+                    Err(error) => panic!("Failed to parse value: {:?}", error),
                 }
             }
-            let page_html: String;
-            match response.text() {
-                Ok(value) => page_html = value,
-                Err(error) => {
-                    panic_on_try_value_exceding_max_tries(
-                        try_value,
-                        format!("Unable to find text of the response: {:?}", error),
-                    );
-                    continue;
+            let json_players: Vec<&Value>;
+            match json_data[JSON_DECK_LISTS_KEY].as_array() {
+                Some(value) => json_players = Vec::from_iter(value),
+                None => panic!("Unable to read key {:?} from json", JSON_DECK_LISTS_KEY),
+            }
+            println!("Request recived with: {:?} players", json_players.len());
+            if json_players.len() != 32 {
+                panic!("N of players not 32");
+            }
+            for player_index in 1..json_players.len() {
+                let cache_data: String = format!(
+                    "{}{}{}{}",
+                    json_players[player_index].to_string(),
+                    RANK_SEPARATOR,
+                    decks_rank[player_index],
+                    PLAYER_SEPARATOR,
+                );
+                if let Err(error) = cache_file.write(cache_data.as_bytes()) {
+                    panic!("Unable to write to cashe file: {}", error);
                 }
+                players.push(json_players[player_index].clone());
             }
-            let first_index: usize;
-            match page_html.find(FIRST_INDEX_STRING) {
-                Some(value) => first_index = value,
-                None => {
-                    panic_on_try_value_exceding_max_tries(
-                        try_value,
-                        format!("{:?}\nUnable to find json in html document", page_html),
-                    );
-                    continue;
-                }
-            }
-            let second_index: usize;
-            match page_html.find(r#"window.MTGO.decklists.type = "#) {
-                Some(value) => second_index = value,
-                None => {
-                    panic_on_try_value_exceding_max_tries(
-                        try_value,
-                        format!("{:?}\nUnable to find json in html document", page_html),
-                    );
-                    continue;
-                }
-            }
-            raw_decks_json =
-                page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string();
-            break;
-        }
-        let json_data: Value;
-        match serde_json::from_str::<Value>(&raw_decks_json) {
-            Ok(parsed_data) => json_data = parsed_data,
-            Err(error) => panic!("Unable to parse json: {:?}", error),
-        };
-        let optional_standings: Option<&Vec<Value>> = json_data[STANDINGS_KEY].as_array();
-        print_formatted_log_string(format!("Standings as array: {:?}", optional_standings));
-        let json_standings: Vec<&Value>;
-        match optional_standings {
-            Some(value) => json_standings = Vec::from_iter(value),
-            None => panic!("Unable to read key {:?} from json", STANDINGS_KEY),
-        }
-        for json_standing in json_standings {
-            let standing_value: &str;
-            match &json_standing[RANK_KEY] {
-                Value::String(value) => standing_value = value,
-                _ => panic!("Unable to read key {:?} from json", RANK_KEY),
-            }
-            match standing_value.parse::<u64>() {
-                Ok(parsed_rank_value) => decks_rank.push(parsed_rank_value),
-                Err(error) => panic!("Failed to parse value: {:?}", error),
-            }
-        }
-        let json_players: Vec<&Value>;
-        match json_data[JSON_DECK_LISTS_KEY].as_array() {
-            Some(value) => json_players = Vec::from_iter(value),
-            None => panic!("Unable to read key {:?} from json", JSON_DECK_LISTS_KEY),
-        }
-        println!("Request recived with: {:?} players", json_players.len());
-        if json_players.len() != 32 {
-            panic!("N of players not 32");
-        }
-        for player_index in 1..json_players.len() {
-            players.push(json_players[player_index].clone());
         }
     }
     println!("Html players are: {:?}", players.len());
