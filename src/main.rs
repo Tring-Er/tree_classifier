@@ -1,6 +1,17 @@
 /* 
+ *
+ * Html players with cache = 1116
+ * n training = 892
+ * Tot predictions = 224
+ * correct = 174
+ * Html players without cache = 1116
+ * n training = 892
+ * Tot predictions = 224
+ * correct = 173
+ *
  * N of decks = 640
- * Version with everything = 78.70968%
+ * Version with everything = 77.2324%
+ * Version wiht cache = 77.67857%
  * Version without lands = 77.06422%
  * Version with lands = 80.73394%
  * Version with creatures = 77.08333%
@@ -27,7 +38,7 @@ const RANK_SEPARATOR: &str = "=-=-=RANK SEPARATOR=-=-=";
 
 use std::{fs as file_system, io::Write, num::ParseIntError, thread, time::Duration};
 
-use serde_json::{Error, Value};
+use serde_json::Value;
 use reqwest::blocking::{Client, Response};
 use rand::{Rng, seq::SliceRandom};
 
@@ -292,6 +303,17 @@ fn main() {
             "05-2512782331",
             "05-3012782641",
             "05-3112782655",
+            "06-0112782673",
+            "06-0612792678",
+            "06-0712792692",
+            "06-0812792709",
+            "06-1312794581",
+            "06-1412794595",
+            "06-1512794613",
+            "06-2012798157",
+            "06-2112798171",
+            "06-2212798189",
+            "06-2712799984",
         ]);
         for url_query in &url_queries {
             urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
