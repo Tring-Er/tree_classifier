@@ -1,0 +1,244 @@
+{
+  "main_deck": [
+    {
+      "card_attributes": {
+        "card_type": "LAND  ",
+        "colors": [
+          "COLOR_COLORLESS"
+        ],
+        "cost": "0"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "LAND  ",
+        "colors": [
+          "COLOR_COLORLESS"
+        ],
+        "cost": "0"
+      },
+      "qty": "4"
+    },
+    {
+      "card_attributes": {
+        "card_type": "ISCREA",
+        "colors": [
+          "COLOR_BLACK"
+        ],
+        "cost": "7"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "LAND  ",
+        "colors": [
+          "COLOR_COLORLESS"
+        ],
+        "cost": "0"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "SORCRY",
+        "colors": [
+          "COLOR_BLACK"
+        ],
+        "cost": "2"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "ISCREA",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "1"
+      },
+      "qty": "3"
+    },
+    {
+      "card_attributes": {
+        "card_type": "LAND  ",
+        "colors": [
+          "COLOR_COLORLESS"
+        ],
+        "cost": "0"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "INSTNT",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "2"
+      },
+      "qty": "3"
+    },
+    {
+      "card_attributes": {
+        "card_type": "INSTNT",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "2"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "INSTNT",
+        "colors": [
+          "COLOR_BLACK"
+        ],
+        "cost": "2"
+      },
+      "qty": "3"
+    },
+    {
+      "card_attributes": {
+        "card_type": "ISCREA",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "4"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "ISCREA",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "4"
+      },
+      "qty": "2"
+    },
+    {
+      "card_attributes": {
+        "card_type": "SORCRY",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "1"
+      },
+      "qty": "4"
+    },
+    {
+      "card_attributes": {
+        "card_type": "INSTNT",
+        "colors": [
+          "COLOR_BLACK"
+        ],
+        "cost": "4"
+      },
+      "qty": "4"
+    },
+    {
+      "card_attributes": {
+        "card_type": "INSTNT",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "1"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "ISCREA",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "2"
+      },
+      "qty": "4"
+    },
+    {
+      "card_attributes": {
+        "card_type": "INSTNT",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "1"
+      },
+      "qty": "2"
+    },
+    {
+      "card_attributes": {
+        "card_type": "ISCREA",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "2"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "ISCREA",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "2"
+      },
+      "qty": "4"
+    },
+    {
+      "card_attributes": {
+        "card_type": "LAND  ",
+        "colors": [
+          "COLOR_COLORLESS"
+        ],
+        "cost": "0"
+      },
+      "qty": "10"
+    },
+    {
+      "card_attributes": {
+        "card_type": "SORCRY",
+        "colors": [
+          "COLOR_BLUE"
+        ],
+        "cost": "5"
+      },
+      "qty": "4"
+    },
+    {
+      "card_attributes": {
+        "card_type": "INSTNT",
+        "colors": [
+          "COLOR_BLACK"
+        ],
+        "cost": "3"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "LAND  ",
+        "colors": [
+          "COLOR_COLORLESS"
+        ],
+        "cost": "0"
+      },
+      "qty": "1"
+    },
+    {
+      "card_attributes": {
+        "card_type": "ISCREA",
+        "colors": [
+          "COLOR_BLACK"
+        ],
+        "cost": "4"
+      },
+      "qty": "2"
+    }
+  ]
+}

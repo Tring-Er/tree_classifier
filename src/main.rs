@@ -1,5 +1,4 @@
 /* 
- *
  * Html players with cache = 1116
  * n training = 892
  * Tot predictions = 224
@@ -41,6 +40,12 @@ use std::{fs as file_system, io::Write, num::ParseIntError, thread, time::Durati
 use serde_json::Value;
 use reqwest::blocking::{Client, Response};
 use rand::{Rng, seq::SliceRandom};
+
+macro_rules! test {
+    () => {
+        println!("This is a test!!!");
+    };
+}
 
 #[derive(Debug)]
 struct Node {
@@ -241,6 +246,16 @@ fn generate_nodes(
 
 
 fn main() {
+    let mut player_to_evaluate_string: String;
+    match file_system::read_to_string("deck_template") {
+        Ok(value) => player_to_evaluate_string = value,
+        Err(error) => panic!("Unable to find or open deck_template file: {:?}", error),
+    }
+    let mut player_to_evaluate: Value;
+    match serde_json::from_str::<Value>(&player_to_evaluate_string) {
+        Ok(value) => player_to_evaluate = value,
+        Err(error) => panic!("Unable to parse string to value for player_to_evaluate: {:?}", error),
+    }
     let mut players: Vec<Value> = Vec::new();
     let mut decks_rank: Vec<u64> = Vec::new();
     if USE_CACHE {
@@ -441,6 +456,7 @@ fn main() {
         }
     }
     println!("Html players are: {:?}", players.len());
+    players.push(player_to_evaluate);
     let mut data_matrix: Vec<Vec<bool>> = Vec::new();
     let colors_array: [String; 6] = [
         format!("{}{}", COLOR_TAG, "WHITE"),
@@ -654,7 +670,7 @@ fn main() {
     }
     data_matrix.append(&mut feature_data);
     let mut deck_position_less_than_9_data: Vec<bool> = Vec::new();
-    for player_index in 0..players.len() {
+    for player_index in 0..players.len() - 1 {
         deck_position_less_than_9_data.push(decks_rank[player_index] < 8);
     }
     let max_training_index: usize =
@@ -723,4 +739,19 @@ fn main() {
         correct_predictions,
         correct_predictions as f32 / total_predictions as f32 * 100.0,
     );
+    let mut number_of_true: usize = 0;
+    let mut number_of_false: usize = 0;
+    for tree in &forest {
+        let mut vector_data: Vec<bool> = Vec::new();
+        for data_vector in &data_matrix {
+            vector_data.push(data_vector[data_vector.len() - 1]);
+        }
+        if evaluate_data(&tree, vector_data) {
+            number_of_true += 1;
+        } else {
+            number_of_false += 1;
+        }
+    }
+    println!("For Evaluation... True: {} False: {}", number_of_true, number_of_false);
+    test!();
 }
