@@ -246,12 +246,12 @@ fn generate_nodes(
 
 
 fn main() {
-    let mut player_to_evaluate_string: String;
+    let player_to_evaluate_string: String;
     match file_system::read_to_string("deck_template") {
         Ok(value) => player_to_evaluate_string = value,
         Err(error) => panic!("Unable to find or open deck_template file: {:?}", error),
     }
-    let mut player_to_evaluate: Value;
+    let player_to_evaluate: Value;
     match serde_json::from_str::<Value>(&player_to_evaluate_string) {
         Ok(value) => player_to_evaluate = value,
         Err(error) => panic!("Unable to parse string to value for player_to_evaluate: {:?}", error),
