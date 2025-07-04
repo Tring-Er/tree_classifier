@@ -43,9 +43,19 @@ use rand::{Rng, seq::SliceRandom};
 
 macro_rules! result_or_panic {
     ($target:expr, $message:literal) => {
+        result_or_expressions!($target, error, panic!("{}: {:?}", $message, error))
+    };
+}
+
+macro_rules! result_or_expressions {
+    ($target:expr, $error_identifier:ident, $($line_of_code:expr),+) => {
         match $target {
             Ok(value) => value,
-            Err(error) => panic!("{}: {:?}", $message, error),
+            Err($error_identifier) => {
+                $(
+                    $line_of_code;
+                )+
+            }
         }
     };
 }
@@ -98,13 +108,6 @@ fn get_new_line_string(indentation_level: &usize) -> Vec<char> {
         new_line_chars.push('\t');
     }
     return new_line_chars;
-}
-
-fn panic_on_try_value_exceding_max_tries(try_value: usize, error_message: String) {
-    if try_value > MAX_TRIES {
-        panic!("{}", error_message);
-    }
-    println!("{}", error_message);
 }
 
 fn correctness_score(
@@ -348,7 +351,10 @@ fn main() {
             println!("Requesting url: {:?}", url);
             let client: Client = Client::new();
             let mut raw_decks_json: String = String::new();
-            for try_value in 1..=MAX_TRIES {
+            let mut error_message: String = String::new();
+            let mut try_value: usize = 0;
+            while try_value < MAX_TRIES {
+                try_value += 1;
                 println!("Try {:?}", try_value);
                 thread::sleep(Duration::from_secs(7));
                 let result_response: Result<Response, reqwest::Error> = client
@@ -374,10 +380,8 @@ fn main() {
                 match result_response {
                     Ok(value) => response = value,
                     Err(error) => {
-                        panic_on_try_value_exceding_max_tries(
-                            try_value,
-                            format!("Unable to get the response: {:?}", error),
-                        );
+                        error_message = format!("Unable to get the response: {:?}", error);
+                        println!("{}", error_message);
                         continue;
                     }
                 }
@@ -385,10 +389,8 @@ fn main() {
                 match response.text() {
                     Ok(value) => page_html = value,
                     Err(error) => {
-                        panic_on_try_value_exceding_max_tries(
-                            try_value,
-                            format!("Unable to find text of the response: {:?}", error),
-                        );
+                        error_message = format!("Unable to find text of the response: {:?}", error);
+                        println!("{}", error_message);
                         continue;
                     }
                 }
@@ -396,10 +398,8 @@ fn main() {
                 match page_html.find(FIRST_INDEX_STRING) {
                     Some(value) => first_index = value,
                     None => {
-                        panic_on_try_value_exceding_max_tries(
-                            try_value,
-                            format!("{:?}\nUnable to find json in html document", page_html),
-                        );
+                        error_message = format!("{:?}\nUnable to find json in html document", page_html);
+                        println!("{}", error_message);
                         continue;
                     }
                 }
@@ -407,16 +407,17 @@ fn main() {
                 match page_html.find(r#"window.MTGO.decklists.type = "#) {
                     Some(value) => second_index = value,
                     None => {
-                        panic_on_try_value_exceding_max_tries(
-                            try_value,
-                            format!("{:?}\nUnable to find json in html document", page_html),
-                        );
+                        error_message = format!("{:?}\nUnable to find json in html document", page_html);
+                        println!("{}", error_message);
                         continue;
                     }
                 }
                 raw_decks_json =
                     page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string();
                 break;
+            }
+            if try_value >= MAX_TRIES {
+                panic!("{}", error_message);
             }
             let json_data: Value = result_or_panic!(
                 serde_json::from_str::<Value>(&raw_decks_json),
