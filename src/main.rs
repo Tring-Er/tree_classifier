@@ -41,9 +41,41 @@ use serde_json::Value;
 use reqwest::blocking::{Client, Response};
 use rand::{Rng, seq::SliceRandom};
 
-macro_rules! test {
-    () => {
-        println!("This is a test!!!");
+macro_rules! result_or_panic {
+    ($target:expr, $message:literal) => {
+        result_or_expressions!($target, error, panic!("{}: {:?}", $message, error);)
+    };
+}
+
+macro_rules! result_or_expressions {
+    ($target:expr, $error_identifier:ident, $($line_of_code:expr;)+) => {
+        match $target {
+            Ok(value) => value,
+            Err($error_identifier) => {
+                $(
+                    $line_of_code;
+                )+
+            }
+        }
+    };
+}
+
+macro_rules! some_or_expressions {
+    ($target:expr, $($line_of_code:expr;)+) => {
+        match $target {
+            Some(value) => value,
+            None => {
+                $(
+                    $line_of_code;
+                )+
+            }
+        }
+    };
+}
+
+macro_rules! some_or_panic {
+    ($target:expr, $message:literal) => {
+        some_or_expressions!($target, panic!("{}", $message);)
     };
 }
 
@@ -86,13 +118,6 @@ fn get_new_line_string(indentation_level: &usize) -> Vec<char> {
         new_line_chars.push('\t');
     }
     return new_line_chars;
-}
-
-fn panic_on_try_value_exceding_max_tries(try_value: usize, error_message: String) {
-    if try_value > MAX_TRIES {
-        panic!("{}", error_message);
-    }
-    println!("{}", error_message);
 }
 
 fn correctness_score(
@@ -246,16 +271,14 @@ fn generate_nodes(
 
 
 fn main() {
-    let player_to_evaluate_string: String;
-    match file_system::read_to_string("deck_template") {
-        Ok(value) => player_to_evaluate_string = value,
-        Err(error) => panic!("Unable to find or open deck_template file: {:?}", error),
-    }
-    let player_to_evaluate: Value;
-    match serde_json::from_str::<Value>(&player_to_evaluate_string) {
-        Ok(value) => player_to_evaluate = value,
-        Err(error) => panic!("Unable to parse string to value for player_to_evaluate: {:?}", error),
-    }
+    let player_to_evaluate_string: String = result_or_panic!(
+        file_system::read_to_string("deck_template"),
+        "Unable  to find or open deck_template file"
+    );
+    let player_to_evaluate: Value = result_or_panic!(
+        serde_json::from_str::<Value>(&player_to_evaluate_string),
+        "Unable to parse string to value for player_to_evaluate"
+    );
     let mut players: Vec<Value> = Vec::new();
     let mut decks_rank: Vec<u64> = Vec::new();
     if USE_CACHE {
@@ -264,33 +287,33 @@ fn main() {
                 panic!("Cache file does not exists or the program has no permisions to ope it"),
             _ => ()
         }
-        let cached_players: String;
-        match file_system::read_to_string(CACHE_PATH) {
-            Ok(file_content) => cached_players = file_content,
-            Err(error) => panic!("Unable to read cache file: {:?}", error),
-        }
+        let cached_players: String = result_or_panic!(
+            file_system::read_to_string(CACHE_PATH),
+            "Unable to read cache file"
+        );
         let mut cached_players: Vec<&str> = Vec::from_iter(cached_players.split(PLAYER_SEPARATOR));
         cached_players.pop();
         for cached_player in cached_players {
             let player_data: Vec<&str> = Vec::from_iter(cached_player.split(RANK_SEPARATOR));
-            match serde_json::from_str::<Value>(player_data[0]) {
-                Ok(player_value) => players.push(player_value),
-                Err(error) => panic!("Unable to parse a player from cache: {:?}", error),
-            }
-            match player_data[1].parse::<u64>() {
-                Ok(value) => decks_rank.push(value),
-                Err(error) => panic!("Unable to parse &str to u64: {:?}", error),
-            }
+            players.push(result_or_panic!(
+                    serde_json::from_str::<Value>(player_data[0]),
+                    "Unable to parse a player from cache"
+                )
+            );
+            decks_rank.push(result_or_panic!(
+                    player_data[1].parse::<u64>(),
+                    "Unable to parse &str to u64"
+                )
+            );
         }
     } else {
         if let Err(error) = file_system::remove_file(CACHE_PATH) {
             panic!("Unable to delete cache file: {:?}", error);
         }
-        let mut cache_file: file_system::File;
-        match file_system::File::create(CACHE_PATH) {
-            Ok(value) => cache_file = value,
-            Err(error) => panic!("Unable to create or open cache file: {}", error),
-        }
+        let mut cache_file: file_system::File = result_or_panic!(
+            file_system::File::create(CACHE_PATH),
+            "Unable to create or open cache file"
+        );
         let mut urls: Vec<String> = Vec::new();
         let url_queries: Vec<&str> = Vec::from([
             "04-0412763152",
@@ -338,7 +361,10 @@ fn main() {
             println!("Requesting url: {:?}", url);
             let client: Client = Client::new();
             let mut raw_decks_json: String = String::new();
-            for try_value in 1..=MAX_TRIES {
+            let mut error_message: String = String::new();
+            let mut try_value: usize = 0;
+            while try_value < MAX_TRIES {
+                try_value += 1;
                 println!("Try {:?}", try_value);
                 thread::sleep(Duration::from_secs(7));
                 let result_response: Result<Response, reqwest::Error> = client
@@ -360,82 +386,61 @@ fn main() {
                     .header("Sec-Fetch-User", "?1")
                     .header("Priority", "u=0, i")
                     .send();
-                let response: Response;
-                match result_response {
-                    Ok(value) => response = value,
-                    Err(error) => {
-                        panic_on_try_value_exceding_max_tries(
-                            try_value,
-                            format!("Unable to get the response: {:?}", error),
-                        );
-                        continue;
-                    }
-                }
-                let page_html: String;
-                match response.text() {
-                    Ok(value) => page_html = value,
-                    Err(error) => {
-                        panic_on_try_value_exceding_max_tries(
-                            try_value,
-                            format!("Unable to find text of the response: {:?}", error),
-                        );
-                        continue;
-                    }
-                }
-                let first_index: usize;
-                match page_html.find(FIRST_INDEX_STRING) {
-                    Some(value) => first_index = value,
-                    None => {
-                        panic_on_try_value_exceding_max_tries(
-                            try_value,
-                            format!("{:?}\nUnable to find json in html document", page_html),
-                        );
-                        continue;
-                    }
-                }
-                let second_index: usize;
-                match page_html.find(r#"window.MTGO.decklists.type = "#) {
-                    Some(value) => second_index = value,
-                    None => {
-                        panic_on_try_value_exceding_max_tries(
-                            try_value,
-                            format!("{:?}\nUnable to find json in html document", page_html),
-                        );
-                        continue;
-                    }
-                }
+                let response: Response = result_or_expressions!(result_response, error,
+                    error_message = format!("Unable to get the response: {:?}", error);
+                    println!("{}", error_message);
+                    continue;
+                );
+                let page_html: String = result_or_expressions!(response.text(), error,
+                    error_message = format!("Unable to find text of the response: {:?}", error);
+                    println!("{}", error_message);
+                    continue;
+                );
+                let first_index: usize = some_or_expressions!(page_html.find(FIRST_INDEX_STRING),
+                    error_message = format!("{:?}\nUnable to find json in html document", page_html); 
+                    println!("{}", error_message);
+                    continue;
+                );
+                let second_index: usize = some_or_expressions!(
+                    page_html.find(r#"window.MTGO.decklists.type = "#),
+                    error_message = format!("{:?}\nUnable to find deck in html document", page_html); 
+                    println!("{}", error_message);
+                    continue;
+                );
                 raw_decks_json =
                     page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string();
                 break;
             }
-            let json_data: Value;
-            match serde_json::from_str::<Value>(&raw_decks_json) {
-                Ok(parsed_data) => json_data = parsed_data,
-                Err(error) => panic!("Unable to parse json: {:?}", error),
-            };
+            if try_value >= MAX_TRIES {
+                panic!("{}", error_message);
+            }
+            let json_data: Value = result_or_panic!(
+                serde_json::from_str::<Value>(&raw_decks_json),
+                "Unable to parse json"
+            );
             let optional_standings: Option<&Vec<Value>> = json_data[STANDINGS_KEY].as_array();
             print_formatted_log_string(format!("Standings as array: {:?}", optional_standings));
-            let json_standings: Vec<&Value>;
-            match optional_standings {
-                Some(value) => json_standings = Vec::from_iter(value),
-                None => panic!("Unable to read key {:?} from json", STANDINGS_KEY),
-            }
+            let json_standings: Vec<&Value> = Vec::from_iter(some_or_panic!(
+                optional_standings,
+                "Unable to read key {STANDINGS_KEY:?} from json"
+            ));
             for json_standing in json_standings {
                 let standing_value: &str;
                 match &json_standing[RANK_KEY] {
                     Value::String(value) => standing_value = value,
                     _ => panic!("Unable to read key {:?} from json", RANK_KEY),
                 }
-                match standing_value.parse::<u64>() {
-                    Ok(parsed_rank_value) => decks_rank.push(parsed_rank_value),
-                    Err(error) => panic!("Failed to parse value: {:?}", error),
-                }
+                decks_rank.push(result_or_panic!(
+                    standing_value.parse::<u64>(),
+                    "Failed to parse value"
+                    )
+                );
             }
-            let json_players: Vec<&Value>;
-            match json_data[JSON_DECK_LISTS_KEY].as_array() {
-                Some(value) => json_players = Vec::from_iter(value),
-                None => panic!("Unable to read key {:?} from json", JSON_DECK_LISTS_KEY),
-            }
+            let json_players: Vec<&Value> = Vec::from_iter(some_or_panic!(
+                    json_data[JSON_DECK_LISTS_KEY].as_array(),
+                    "Unable to read key {JSON_DECK_LISTS_KEY:?} from json"
+                )
+            );
             println!("Request recived with: {:?} players", json_players.len());
             if json_players.len() != 32 {
                 panic!("N of players not 32");
@@ -477,18 +482,14 @@ fn main() {
     }
     let mut card_average_cost_data: Vec<f32> = Vec::new();
     for player_index in 0..players.len() {
-        let player_data_json: &Value;
-        match players[player_index].get("main_deck") {
-            Some(value) => player_data_json = value,
-            None => panic!("Unable to find main_deck field in json"),
-        }
+        let player_data_json: &Value = some_or_panic!(
+            players[player_index].get("main_deck"),
+            "Unable to find main_deck field in json"
+        );
         let deck: &Vec<Value>;
         let option_deck: Option<&Vec<Value>> = player_data_json.as_array();
         print_formatted_log_string(format!("Player's deck: {:?}", option_deck));
-        match option_deck {
-            Some(value) => deck = value,
-            None => panic!("Unable to convert deck to Vec: {:?}", player_data_json),
-        }
+        deck = some_or_panic!(option_deck, "Unable to convert deck to Vec: {player_data_json:?}");
         let mut player_colors_data: Vec<bool> = Vec::new();
         for _ in 0..colors_array.len() {
             player_colors_data.push(false);
@@ -502,10 +503,10 @@ fn main() {
             let card_attributes: &Value;
             let option_card_attributes: Option<&Value> = card.get("card_attributes");
             print_formatted_log_string(format!("Card attributes: {:?}", option_card_attributes));
-            match option_card_attributes {
-                Some(value) => card_attributes = value,
-                None => panic!("Unable to find card_attributes field in json"),
-            }
+            card_attributes = some_or_panic!(
+                option_card_attributes,
+                "Unable to find card_attributes field in json"
+            );
             let option_colors_vector: Option<&Vec<Value>> = card_attributes["colors"].as_array();
             print_formatted_log_string(format!("Colors in array: {:?}", option_colors_vector));
             let mut colors_vector: &Vec<Value> = &Vec::new();
@@ -517,11 +518,10 @@ fn main() {
             }
             for color_index in 0..colors_array.len() {
                 for card_color in colors_vector {
-                    let card_color_string: String;
-                    match serde_json::to_string(card_color) {
-                        Ok(value) => card_color_string = value,
-                        Err(_) => panic!("Unable to convert color to String"),
-                    }
+                    let card_color_string: String = result_or_panic!(
+                        serde_json::to_string(card_color),
+                        "Unable to convert color to String"
+                    );
                     if card_color_string == colors_array[color_index] {
                         player_colors_data[color_index] = true;
                     }
@@ -545,11 +545,10 @@ fn main() {
                 Value::String(value) => optional_card_type = Some(value),
                 _ => optional_card_type = None,
             }
-            let card_quantity: u8;
-            match card_quantity_string.parse::<u8>() {
-                Ok(value) => card_quantity = value,
-                Err(error) => panic!("Unable to parse {:?} to u8: {:?}", card_quantity_string, error),
-            }
+            let card_quantity: u8 = result_or_panic!(
+                card_quantity_string.parse::<u8>(),
+                "Unable to parse card_quantity_string to u8"
+            );
             if let Some(card_type_value) = optional_card_type {
                 for card_type_index in 0..cards_type_array.len() {
                     if card_type_value == cards_type_array[card_type_index] {
@@ -567,11 +566,10 @@ fn main() {
             if let Some(card_cost_string) = option_card_cost_string {
                 let result_card_cost: Result<usize, ParseIntError> = card_cost_string.parse::<usize>();
                 print_formatted_log_string(format!("Parsed result card cost: {:?}", result_card_cost));
-                let card_cost: usize;
-                match result_card_cost {
-                    Ok(value) => card_cost = value,
-                    Err(error) => panic!("Unable to parse {:?} to u8: {:?}", card_cost_string, error),
-                }
+                let card_cost: usize = result_or_panic!(
+                    result_card_cost,
+                    "Unable to parse card_cost_string to u8"
+                );
                 for _ in 0..card_quantity {
                     cards_cost.push(card_cost);
                 }
@@ -753,5 +751,4 @@ fn main() {
         }
     }
     println!("For Evaluation... True: {} False: {}", number_of_true, number_of_false);
-    test!();
 }
