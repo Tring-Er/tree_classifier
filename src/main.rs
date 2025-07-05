@@ -43,12 +43,12 @@ use rand::{Rng, seq::SliceRandom};
 
 macro_rules! result_or_panic {
     ($target:expr, $message:literal) => {
-        result_or_expressions!($target, error, panic!("{}: {:?}", $message, error))
+        result_or_expressions!($target, error, panic!("{}: {:?}", $message, error);)
     };
 }
 
 macro_rules! result_or_expressions {
-    ($target:expr, $error_identifier:ident, $($line_of_code:expr),+) => {
+    ($target:expr, $error_identifier:ident, $($line_of_code:expr;)+) => {
         match $target {
             Ok(value) => value,
             Err($error_identifier) => {
@@ -60,12 +60,22 @@ macro_rules! result_or_expressions {
     };
 }
 
-macro_rules! some_or_panic {
-    ($target:expr, $message:literal) => {
+macro_rules! some_or_expressions {
+    ($target:expr, $($line_of_code:expr;)+) => {
         match $target {
             Some(value) => value,
-            None => panic!("{}", $message),
+            None => {
+                $(
+                    $line_of_code;
+                )+
+            }
         }
+    };
+}
+
+macro_rules! some_or_panic {
+    ($target:expr, $message:literal) => {
+        some_or_expressions!($target, panic!("{}", $message);)
     };
 }
 
@@ -376,42 +386,27 @@ fn main() {
                     .header("Sec-Fetch-User", "?1")
                     .header("Priority", "u=0, i")
                     .send();
-                let response: Response;
-                match result_response {
-                    Ok(value) => response = value,
-                    Err(error) => {
-                        error_message = format!("Unable to get the response: {:?}", error);
-                        println!("{}", error_message);
-                        continue;
-                    }
-                }
-                let page_html: String;
-                match response.text() {
-                    Ok(value) => page_html = value,
-                    Err(error) => {
-                        error_message = format!("Unable to find text of the response: {:?}", error);
-                        println!("{}", error_message);
-                        continue;
-                    }
-                }
-                let first_index: usize;
-                match page_html.find(FIRST_INDEX_STRING) {
-                    Some(value) => first_index = value,
-                    None => {
-                        error_message = format!("{:?}\nUnable to find json in html document", page_html);
-                        println!("{}", error_message);
-                        continue;
-                    }
-                }
-                let second_index: usize;
-                match page_html.find(r#"window.MTGO.decklists.type = "#) {
-                    Some(value) => second_index = value,
-                    None => {
-                        error_message = format!("{:?}\nUnable to find json in html document", page_html);
-                        println!("{}", error_message);
-                        continue;
-                    }
-                }
+                let response: Response = result_or_expressions!(result_response, error,
+                    error_message = format!("Unable to get the response: {:?}", error);
+                    println!("{}", error_message);
+                    continue;
+                );
+                let page_html: String = result_or_expressions!(response.text(), error,
+                    error_message = format!("Unable to find text of the response: {:?}", error);
+                    println!("{}", error_message);
+                    continue;
+                );
+                let first_index: usize = some_or_expressions!(page_html.find(FIRST_INDEX_STRING),
+                    error_message = format!("{:?}\nUnable to find json in html document", page_html); 
+                    println!("{}", error_message);
+                    continue;
+                );
+                let second_index: usize = some_or_expressions!(
+                    page_html.find(r#"window.MTGO.decklists.type = "#),
+                    error_message = format!("{:?}\nUnable to find deck in html document", page_html); 
+                    println!("{}", error_message);
+                    continue;
+                );
                 raw_decks_json =
                     page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string();
                 break;
