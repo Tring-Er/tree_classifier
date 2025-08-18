@@ -1,4 +1,4 @@
-/* 
+/*
  * Html players with cache = 1116
  * n training = 892
  * Tot predictions = 224
@@ -30,12 +30,13 @@ const JSON_DECK_LISTS_KEY: &str = "decklists";
 const COLOR_TAG: &str = "COLOR_";
 const TRAINING_PERCENTAGE: f32 = 0.8;
 const VERBOSE_LOG: bool = false;
-const USE_CACHE: bool = true;
+const FORCE_USE_CACHE: bool = false;
 const CACHE_PATH: &str = "cache";
+const LAST_CACHE_SEPARATOR: &str = "=-=-=CACHE ETA=-=-=";
 const PLAYER_SEPARATOR: &str = "=-=-=PLAYER SEPARATOR=-=-=";
 const RANK_SEPARATOR: &str = "=-=-=RANK SEPARATOR=-=-=";
 
-use std::{fs as file_system, io::Write, num::ParseIntError, thread, time::Duration};
+use std::{fs as file_system, io::Write, num::ParseIntError, thread, time::{Duration, SystemTime}};
 
 use serde_json::Value;
 use reqwest::blocking::{Client, Response};
@@ -271,6 +272,14 @@ fn generate_nodes(
 
 
 fn main() {
+    let one_week: Duration = Duration::from_secs(1 * 7 * 24 * 60 * 60);
+    let one_week_as_seconds: u64 = one_week.as_secs();
+    let today: SystemTime = SystemTime::now();
+    let today_as_duration: Duration = result_or_panic!(
+        today.duration_since(SystemTime::UNIX_EPOCH),
+        "Unable to convert today time into seconds since unix epoch"
+    );
+    let today_as_seconds: u64 = today_as_duration.as_secs();
     let player_to_evaluate_string: String = result_or_panic!(
         file_system::read_to_string("deck_template"),
         "Unable  to find or open deck_template file"
@@ -279,19 +288,26 @@ fn main() {
         serde_json::from_str::<Value>(&player_to_evaluate_string),
         "Unable to parse string to value for player_to_evaluate"
     );
+    match file_system::exists(CACHE_PATH) {
+        Ok(false) => panic!("Cache file does not exists"),
+        Err(_) => panic!("The program has no permisions to open the  cache file"),
+        _ => ()
+    }
+    let cache_rows: String = result_or_panic!(
+        file_system::read_to_string(CACHE_PATH),
+        "Unable to read cache file"
+    );
+    let cache_rows: Vec<&str> = Vec::from_iter(cache_rows.split(LAST_CACHE_SEPARATOR));
+    let last_cache: u64 = result_or_panic!(
+        str::parse::<u64>(cache_rows[0]),
+        "Unable to parse last cache eta to u64"
+    );
     let mut players: Vec<Value> = Vec::new();
     let mut decks_rank: Vec<u64> = Vec::new();
-    if USE_CACHE {
-        match file_system::exists(CACHE_PATH) {
-            Ok(false) | Err(_) =>
-                panic!("Cache file does not exists or the program has no permisions to ope it"),
-            _ => ()
-        }
-        let cached_players: String = result_or_panic!(
-            file_system::read_to_string(CACHE_PATH),
-            "Unable to read cache file"
-        );
-        let mut cached_players: Vec<&str> = Vec::from_iter(cached_players.split(PLAYER_SEPARATOR));
+    let is_cache_younger_than_a_week: bool = today_as_seconds - last_cache < one_week_as_seconds;
+    if is_cache_younger_than_a_week | FORCE_USE_CACHE {
+        println!("Using cache!");
+        let mut cached_players: Vec<&str> = Vec::from_iter(cache_rows[1].split(PLAYER_SEPARATOR));
         cached_players.pop();
         for cached_player in cached_players {
             let player_data: Vec<&str> = Vec::from_iter(cached_player.split(RANK_SEPARATOR));
@@ -307,6 +323,7 @@ fn main() {
             );
         }
     } else {
+        println!("Fetching from the web");
         if let Err(error) = file_system::remove_file(CACHE_PATH) {
             panic!("Unable to delete cache file: {:?}", error);
         }
@@ -314,11 +331,19 @@ fn main() {
             file_system::File::create(CACHE_PATH),
             "Unable to create or open cache file"
         );
+        let today_duration: Duration = result_or_panic!(
+            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH),
+            "Unable to convert current date to seconds"
+        );
+        if let Err(error) = cache_file.write(format!("{}{}", today_duration.as_secs(), LAST_CACHE_SEPARATOR).as_bytes()) {
+            panic!("Unable to write to cashe file: {}", error);
+        }
         let mut urls: Vec<String> = Vec::new();
         let url_queries: Vec<&str> = Vec::from([
             "04-0412763152",
             "04-0512763169",
             "04-0612763187",
+            /*
             "04-1112765765",
             "04-1212765782",
             "04-1812769888",
@@ -352,6 +377,7 @@ fn main() {
             "06-2112798171",
             "06-2212798189",
             "06-2712799984",
+            */
         ]);
         for url_query in &url_queries {
             urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
