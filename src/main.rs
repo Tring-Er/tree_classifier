@@ -1,25 +1,3 @@
-/*
- * Html players with cache = 1116
- * n training = 892
- * Tot predictions = 224
- * correct = 174
- * Html players without cache = 1116
- * n training = 892
- * Tot predictions = 224
- * correct = 173
- *
- * N of decks = 640
- * Version with everything = 77.2324%
- * Version wiht cache = 77.67857%
- * Version without lands = 77.06422%
- * Version with lands = 80.73394%
- * Version with creatures = 77.08333%
- * Version with instants = 67.70833%
- * Version with sorceries = 64.58333%
- * Version with artifacts = 78.125%
- * Version with enchantments = 77.08333%
- */
-
 const COOKIES: &str = "locale=en_US; tarteaucitron=!dgcMultiplegtagUa=wait; JSESSIONID=26504EDCACA304DCB74AB4E6D17B477C.lvs-foyert2-3409";
 const HOST: &str = "www.mtgo.com";
 const MAX_TRIES: usize = 5;
@@ -30,7 +8,7 @@ const JSON_DECK_LISTS_KEY: &str = "decklists";
 const COLOR_TAG: &str = "COLOR_";
 const TRAINING_PERCENTAGE: f32 = 0.8;
 const VERBOSE_LOG: bool = false;
-const FORCE_USE_CACHE: bool = false;
+const FORCE_DATA_COLLECTION_MODE: ForceMode = ForceMode::None;
 const CACHE_PATH: &str = "cache";
 const LAST_CACHE_SEPARATOR: &str = "=-=-=CACHE ETA=-=-=";
 const PLAYER_SEPARATOR: &str = "=-=-=PLAYER SEPARATOR=-=-=";
@@ -42,43 +20,6 @@ use serde_json::Value;
 use reqwest::blocking::{Client, Response};
 use rand::{Rng, seq::SliceRandom};
 
-macro_rules! result_or_panic {
-    ($target:expr, $message:literal) => {
-        result_or_expressions!($target, error, panic!("{}: {:?}", $message, error);)
-    };
-}
-
-macro_rules! result_or_expressions {
-    ($target:expr, $error_identifier:ident, $($line_of_code:expr;)+) => {
-        match $target {
-            Ok(value) => value,
-            Err($error_identifier) => {
-                $(
-                    $line_of_code;
-                )+
-            }
-        }
-    };
-}
-
-macro_rules! some_or_expressions {
-    ($target:expr, $($line_of_code:expr;)+) => {
-        match $target {
-            Some(value) => value,
-            None => {
-                $(
-                    $line_of_code;
-                )+
-            }
-        }
-    };
-}
-
-macro_rules! some_or_panic {
-    ($target:expr, $message:literal) => {
-        some_or_expressions!($target, panic!("{}", $message);)
-    };
-}
 
 #[derive(Debug)]
 struct Node {
@@ -88,6 +29,13 @@ struct Node {
     on_true: Option<Box<Node>>,
     on_false: Option<Box<Node>>,
     prediction: Option<bool>,
+}
+
+#[allow(dead_code)]
+enum ForceMode {
+    None,
+    Cache,
+    Requests,
 }
 
 fn print_formatted_log_string(target_string: String) {
@@ -270,222 +218,354 @@ fn generate_nodes(
     };
 }
 
+fn get_decks_json(url: &str, client: &Client) -> Result<String, String> {
+    let mut error_message: String = String::new();
+    let mut number_of_tries: usize = 0;
+    while number_of_tries < MAX_TRIES {
+        number_of_tries += 1;
+        println!("Try n: {:?}", number_of_tries);
+        thread::sleep(Duration::from_secs(7));
+        let response: Result<Response, reqwest::Error> = client
+            .get(url)
+            .timeout(Duration::from_secs(60))
+            .header("Host", HOST)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
+            .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-Us,en;q=0.5")
+            .header("Accept-Encoding", "gzip, deflate, br, zstd")
+            .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
+            .header("Sec-GPC", "1")
+            .header("Connection", "keep-alive")
+            .header("Cookie", COOKIES)
+            .header("Upgrade-Insecure-Requests", "1")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "same-origin")
+            .header("Sec-Fetch-User", "?1")
+            .header("Priority", "u=0, i")
+            .send();
+        let response: Response = match response {
+            Ok(value) => value,
+            Err(error) => {
+                error_message = format!("Unable to get the response: {:?}", error);
+                println!("{}", error_message);
+                continue;
+            }
+        };
+        let page_html: String = match response.text() {
+            Ok(value) => value,
+            Err(error) => {
+                error_message = format!("Unable to find text of the response: {:?}", error);
+                println!("{}", error_message);
+                continue;
+            }
+        };
+        let first_index: usize = match page_html.find(FIRST_INDEX_STRING) {
+            Some(value) => value,
+            None => {
+                error_message = format!("{:?}\nUnable to find json in html document", page_html); 
+                println!("{}", error_message);
+                continue;
+            }
+        };
+        let second_index: usize = match page_html.find(r#"window.MTGO.decklists.type = "#) {
+            Some(value) => value,
+            None => {
+                error_message = format!("{:?}\nUnable to find deck in html document", page_html); 
+                println!("{}", error_message);
+                continue;
+            }
+        };
+        return Ok(page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string());
+    }
+    return Err(error_message);
+}
+
+fn get_data_from_requests() -> Result<(Vec<Value>, Vec<u64>), String> {
+    let mut players: Vec<Value> = Vec::new();
+    let mut decks_rank: Vec<u64> = Vec::new();
+    println!("Fetching from the web");
+    if let Err(error) = file_system::remove_file(CACHE_PATH) {
+        return Err(format!("Unable to delete cache file: {:?}", error));
+    }
+    let mut cache_file: file_system::File = match file_system::File::create(CACHE_PATH) {
+        Ok(value) => value,
+        Err(error) => {
+            return Err(format!("{}: {:?}", "Unable to create or open cache file", error));
+        }
+    };
+    let today_duration: Duration = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(value) => value,
+        Err(error) => {
+            return Err(format!("{}: {:?}", "Unable to convert current date to seconds", error));
+        }
+    };
+    if let Err(error) = cache_file.write(
+        format!("{}{}", today_duration.as_secs(), LAST_CACHE_SEPARATOR).as_bytes()
+    ) {
+        return Err(format!("Unable to write to cashe file: {}", error));
+    }
+    let mut urls: Vec<String> = Vec::new();
+    let url_queries: Vec<&str> = Vec::from([
+        "04-0412763152",
+        "04-0512763169",
+        "04-0612763187",
+        /*
+        "04-1112765765",
+        "04-1212765782",
+        "04-1812769888",
+        "04-1912769905",
+        "04-2012769922",
+        "04-2512772646",
+        "04-2612772667",
+        "04-2712772689",
+        "05-0212774478",
+        "05-0312774499",
+        "05-0412774521",
+        "05-0912777329",
+        "05-1012777346",
+        "05-1112777364",
+        "05-1612780132",
+        "05-1712780149",
+        "05-1812780167",
+        "05-2312782299",
+        "05-2412782313",
+        "05-2512782331",
+        "05-3012782641",
+        "05-3112782655",
+        "06-0112782673",
+        "06-0612792678",
+        "06-0712792692",
+        "06-0812792709",
+        "06-1312794581",
+        "06-1412794595",
+        "06-1512794613",
+        "06-2012798157",
+        "06-2112798171",
+        "06-2212798189",
+        "06-2712799984",
+        */
+    ]);
+    for url_query in &url_queries {
+        urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
+    }
+    for url_index in 0..url_queries.len() {
+        let url: &str = &urls[url_index];
+        println!("Requesting url: {:?}", url);
+        let client: Client = Client::new();
+        let raw_decks_json: String = match get_decks_json(url, &client) {
+            Ok(html_page) => html_page,
+            Err(error) => return Err(format!("{}", error)),
+        };
+        let json_data: Value = match serde_json::from_str::<Value>(&raw_decks_json) {
+            Ok(value) => value,
+            Err(error) => return Err(format!("{}: {:?}", "Unable to parse json", error)),
+        };
+        let optional_standings: Option<&Vec<Value>> = json_data[STANDINGS_KEY].as_array();
+        print_formatted_log_string(format!("Standings as array: {:?}", optional_standings));
+        let standings: &Vec<Value> = match optional_standings {
+            Some(value) => value,
+            None => return Err(format!("{}", "Unable to read key {STANDINGS_KEY:?} from json")),
+        };
+        let json_standings: Vec<&Value> = Vec::from_iter(standings);
+        for json_standing in &json_standings {
+            let standing_value: &str = match &json_standing[RANK_KEY] {
+                Value::String(value) => value,
+                _ => return Err(format!("Unable to read key {:?} from json", RANK_KEY)),
+            };
+            let rank: u64 = match standing_value.parse::<u64>() {
+                Ok(value) => value,
+                Err(error) => return Err(format!("{}: {:?}", "Failed to parse value", error)),
+            };
+            decks_rank.push(rank);
+        }
+        let json_players: Vec<&Value> = Vec::from_iter(
+            match json_data[JSON_DECK_LISTS_KEY].as_array() {
+                Some(value) => value,
+                None => return Err(format!("{}", "Unable to read key {JSON_DECK_LISTS_KEY:?} from json")),
+            }
+        );
+        println!("Request recived with: {:?} players", json_players.len());
+        if json_players.len() != 32 {
+            return Err(format!("N of players not 32"));
+        }
+        for player_index in 1..json_players.len() {
+            let cache_data: String = format!(
+                "{}{}{}{}",
+                json_players[player_index].to_string(),
+                RANK_SEPARATOR,
+                decks_rank[player_index],
+                PLAYER_SEPARATOR,
+            );
+            if let Err(error) = cache_file.write(cache_data.as_bytes()) {
+                return Err(format!("Unable to write to cashe file: {}", error));
+            }
+            players.push(json_players[player_index].clone());
+        }
+    }
+    return Ok((players, decks_rank));
+}
+
+fn get_data_from_cache(cache_rows: Vec<&str>) -> Result<(Vec<Value>, Vec<u64>), String> {
+    println!("Using cache!");
+    let mut players: Vec<Value> = Vec::new();
+    let mut decks_rank: Vec<u64> = Vec::new();
+    let mut cached_players: Vec<&str> = Vec::from_iter(cache_rows[1].split(PLAYER_SEPARATOR));
+    cached_players.pop();
+    for cached_player in cached_players {
+        let player_data: Vec<&str> = Vec::from_iter(cached_player.split(RANK_SEPARATOR));
+        let player_as_value: Value = match serde_json::from_str::<Value>(player_data[0]) {
+            Ok(value) => value,
+            Err(error) => return Err(format!("{}: {:?}", "Unable to parse a player from cache", error)),
+        };
+        players.push(player_as_value);
+        let player_rank: u64 = match player_data[1].parse::<u64>() {
+            Ok(value) => value,
+            Err(error) => return Err(format!("{}: {:?}", "Unable to parse &str to u64", error)),
+        };
+        decks_rank.push(player_rank);
+    }
+    return Ok((players, decks_rank));
+}
+
+fn get_data_from_optimal_source(cache_rows: Vec<&str>) -> Result<(Vec<Value>, Vec<u64>), String> {
+    let today: SystemTime = SystemTime::now();
+    let today: Duration = match today.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(value) => value,
+        Err(error) => return Err(
+            format!("{}: {:?}", "Unable to convert today time into seconds since unix epoch", error)
+        ),
+    };
+    let today: u64 = today.as_secs();
+    let last_cache: u64 = match str::parse::<u64>(cache_rows[0]) {
+        Ok(value) => value,
+        Err(error) => return Err(
+            format!("{}: {:?}", "Unable to parse last cache eta to u64", error)
+        ),
+    };
+    let one_week: Duration = Duration::from_secs(1 * 7 * 24 * 60 * 60);
+    let one_week: u64 = one_week.as_secs();
+    let is_cache_younger_than_a_week: bool = today - last_cache < one_week;
+    if is_cache_younger_than_a_week {
+        return get_data_from_cache(cache_rows);
+    }
+    return get_data_from_requests();
+}
+
+fn get_binary_card_colors(card_attributes: &Value, colors_array: &[String; 6]) -> Result<[bool; 6], String> {
+    let mut binary_card_colors: [bool; 6] = [false, false, false, false, false, false];
+    let card_colors: Option<&Vec<Value>> = card_attributes["colors"].as_array();
+    print_formatted_log_string(format!("Colors in array: {:?}", card_colors));
+    let card_colors: &Vec<Value> = match card_colors {
+        Some(value) => value,
+        None => {
+            println!("!WARNING A card without the color field has been found, data about this card will be incomplete");
+            return Ok(binary_card_colors);
+        }
+    };
+    for color_index in 0..colors_array.len() {
+        for card_color in card_colors {
+            let card_color: String = match serde_json::to_string(card_color) {
+                Ok(value) => value,
+                Err(error) => return Err(format!("{}: {:?}", "Unable to convert color to String", error)),
+            };
+            if card_color == colors_array[color_index] {
+                binary_card_colors[color_index] = true;
+            }
+        }
+    }
+    return Ok(binary_card_colors);
+}
+
+fn get_card_types_quantities_array(card_type: Option<&str>, cards_type_array: &[&str; 6], card_quantity: &u8) -> Vec<u8> {
+    let mut card_type_quantities: Vec<u8> = Vec::new();
+    for _ in 0..cards_type_array.len() {
+        card_type_quantities.push(0);
+    }
+    if let Some(card_type) = card_type {
+        for card_type_index in 0..cards_type_array.len() {
+            if card_type == cards_type_array[card_type_index] {
+                card_type_quantities[card_type_index] += *card_quantity;
+            }
+        }
+    }
+    return card_type_quantities;
+}
+
+fn push_card_costs(card_attributes: &Value, card_quantity: &u8, cards_cost: &mut Vec<usize>) -> Result<(), String> {
+    let value_card_cost: &Value = &card_attributes["cost"];
+    print_formatted_log_string(format!("Cost from card attribute: {:?}", value_card_cost));
+    let option_card_cost_string: Option<&str>;
+    match value_card_cost {
+        Value::String(value) => option_card_cost_string = Some(value),
+        _ => option_card_cost_string = None,
+    }
+    if let Some(card_cost_string) = option_card_cost_string {
+        let result_card_cost: Result<usize, ParseIntError> = card_cost_string.parse::<usize>();
+        print_formatted_log_string(format!("Parsed result card cost: {:?}", result_card_cost));
+        let card_cost: usize = match result_card_cost {
+            Ok(value) => value,
+            Err(error) => return Err(format!("{}: {:?}", "Unable to parse card_cost_string to u8", error)),
+        };
+        for _ in 0..*card_quantity {
+            cards_cost.push(card_cost);
+        }
+    }
+    return Ok(());
+}
+
+fn is_value_in_vector<Type: std::cmp::PartialEq>(target: &Type, vector: &Vec<Type>) -> bool {
+    for value in vector {
+        if target == value {
+            return true;
+        }
+    }
+    return false;
+}
 
 fn main() {
-    let one_week: Duration = Duration::from_secs(1 * 7 * 24 * 60 * 60);
-    let one_week_as_seconds: u64 = one_week.as_secs();
-    let today: SystemTime = SystemTime::now();
-    let today_as_duration: Duration = result_or_panic!(
-        today.duration_since(SystemTime::UNIX_EPOCH),
-        "Unable to convert today time into seconds since unix epoch"
-    );
-    let today_as_seconds: u64 = today_as_duration.as_secs();
-    let player_to_evaluate_string: String = result_or_panic!(
-        file_system::read_to_string("deck_template"),
-        "Unable  to find or open deck_template file"
-    );
-    let player_to_evaluate: Value = result_or_panic!(
-        serde_json::from_str::<Value>(&player_to_evaluate_string),
-        "Unable to parse string to value for player_to_evaluate"
-    );
+    let player_to_evaluate_string: String = match file_system::read_to_string("deck_template") {
+        Ok(value) => value,
+        Err(error) => {
+            panic!("{}: {:?}", "Unable  to find or open deck_template file", error);
+        }
+    };
+    let player_to_evaluate: Value = match serde_json::from_str::<Value>(&player_to_evaluate_string) {
+        Ok(value) => value,
+        Err(error) => {
+            panic!("{}: {:?}", "Unable to parse string to value for player_to_evaluate", error);
+        }
+    };
     match file_system::exists(CACHE_PATH) {
         Ok(false) => panic!("Cache file does not exists"),
         Err(_) => panic!("The program has no permisions to open the  cache file"),
         _ => ()
     }
-    let cache_rows: String = result_or_panic!(
-        file_system::read_to_string(CACHE_PATH),
-        "Unable to read cache file"
-    );
+    let cache_rows: String = match file_system::read_to_string(CACHE_PATH) {
+        Ok(value) => value,
+        Err(error) => panic!("{}: {:?}", "Unable to read cache file", error),
+    };
     let cache_rows: Vec<&str> = Vec::from_iter(cache_rows.split(LAST_CACHE_SEPARATOR));
-    let last_cache: u64 = result_or_panic!(
-        str::parse::<u64>(cache_rows[0]),
-        "Unable to parse last cache eta to u64"
-    );
-    let mut players: Vec<Value> = Vec::new();
-    let mut decks_rank: Vec<u64> = Vec::new();
-    let is_cache_younger_than_a_week: bool = today_as_seconds - last_cache < one_week_as_seconds;
-    if is_cache_younger_than_a_week | FORCE_USE_CACHE {
-        println!("Using cache!");
-        let mut cached_players: Vec<&str> = Vec::from_iter(cache_rows[1].split(PLAYER_SEPARATOR));
-        cached_players.pop();
-        for cached_player in cached_players {
-            let player_data: Vec<&str> = Vec::from_iter(cached_player.split(RANK_SEPARATOR));
-            players.push(result_or_panic!(
-                    serde_json::from_str::<Value>(player_data[0]),
-                    "Unable to parse a player from cache"
-                )
-            );
-            decks_rank.push(result_or_panic!(
-                    player_data[1].parse::<u64>(),
-                    "Unable to parse &str to u64"
-                )
-            );
-        }
-    } else {
-        println!("Fetching from the web");
-        if let Err(error) = file_system::remove_file(CACHE_PATH) {
-            panic!("Unable to delete cache file: {:?}", error);
-        }
-        let mut cache_file: file_system::File = result_or_panic!(
-            file_system::File::create(CACHE_PATH),
-            "Unable to create or open cache file"
-        );
-        let today_duration: Duration = result_or_panic!(
-            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH),
-            "Unable to convert current date to seconds"
-        );
-        if let Err(error) = cache_file.write(format!("{}{}", today_duration.as_secs(), LAST_CACHE_SEPARATOR).as_bytes()) {
-            panic!("Unable to write to cashe file: {}", error);
-        }
-        let mut urls: Vec<String> = Vec::new();
-        let url_queries: Vec<&str> = Vec::from([
-            "04-0412763152",
-            "04-0512763169",
-            "04-0612763187",
-            /*
-            "04-1112765765",
-            "04-1212765782",
-            "04-1812769888",
-            "04-1912769905",
-            "04-2012769922",
-            "04-2512772646",
-            "04-2612772667",
-            "04-2712772689",
-            "05-0212774478",
-            "05-0312774499",
-            "05-0412774521",
-            "05-0912777329",
-            "05-1012777346",
-            "05-1112777364",
-            "05-1612780132",
-            "05-1712780149",
-            "05-1812780167",
-            "05-2312782299",
-            "05-2412782313",
-            "05-2512782331",
-            "05-3012782641",
-            "05-3112782655",
-            "06-0112782673",
-            "06-0612792678",
-            "06-0712792692",
-            "06-0812792709",
-            "06-1312794581",
-            "06-1412794595",
-            "06-1512794613",
-            "06-2012798157",
-            "06-2112798171",
-            "06-2212798189",
-            "06-2712799984",
-            */
-        ]);
-        for url_query in &url_queries {
-            urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
-        }
-        for url_index in 0..url_queries.len() {
-            let url: &str = &urls[url_index];
-            println!("Requesting url: {:?}", url);
-            let client: Client = Client::new();
-            let mut raw_decks_json: String = String::new();
-            let mut error_message: String = String::new();
-            let mut try_value: usize = 0;
-            while try_value < MAX_TRIES {
-                try_value += 1;
-                println!("Try {:?}", try_value);
-                thread::sleep(Duration::from_secs(7));
-                let result_response: Result<Response, reqwest::Error> = client
-                    .get(url)
-                    .timeout(Duration::from_secs(60))
-                    .header("Host", HOST)
-                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
-                    .header("Accetp", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                    .header("Accept-Language", "en-Us,en;q=0.5")
-                    .header("Accept-Encoding", "gzip, deflate, br, zstd")
-                    .header("Referer", "https://www.mtgo.com/decklists?filter=Pauper")
-                    .header("Sec-GPC", "1")
-                    .header("Connection", "keep-alive")
-                    .header("Cookie", COOKIES)
-                    .header("Upgrade-Insecure-Requests", "1")
-                    .header("Sec-Fetch-Dest", "document")
-                    .header("Sec-Fetch-Mode", "navigate")
-                    .header("Sec-Fetch-Site", "same-origin")
-                    .header("Sec-Fetch-User", "?1")
-                    .header("Priority", "u=0, i")
-                    .send();
-                let response: Response = result_or_expressions!(result_response, error,
-                    error_message = format!("Unable to get the response: {:?}", error);
-                    println!("{}", error_message);
-                    continue;
-                );
-                let page_html: String = result_or_expressions!(response.text(), error,
-                    error_message = format!("Unable to find text of the response: {:?}", error);
-                    println!("{}", error_message);
-                    continue;
-                );
-                let first_index: usize = some_or_expressions!(page_html.find(FIRST_INDEX_STRING),
-                    error_message = format!("{:?}\nUnable to find json in html document", page_html); 
-                    println!("{}", error_message);
-                    continue;
-                );
-                let second_index: usize = some_or_expressions!(
-                    page_html.find(r#"window.MTGO.decklists.type = "#),
-                    error_message = format!("{:?}\nUnable to find deck in html document", page_html); 
-                    println!("{}", error_message);
-                    continue;
-                );
-                raw_decks_json =
-                    page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string();
-                break;
-            }
-            if try_value >= MAX_TRIES {
-                panic!("{}", error_message);
-            }
-            let json_data: Value = result_or_panic!(
-                serde_json::from_str::<Value>(&raw_decks_json),
-                "Unable to parse json"
-            );
-            let optional_standings: Option<&Vec<Value>> = json_data[STANDINGS_KEY].as_array();
-            print_formatted_log_string(format!("Standings as array: {:?}", optional_standings));
-            let json_standings: Vec<&Value> = Vec::from_iter(some_or_panic!(
-                optional_standings,
-                "Unable to read key {STANDINGS_KEY:?} from json"
-            ));
-            for json_standing in json_standings {
-                let standing_value: &str;
-                match &json_standing[RANK_KEY] {
-                    Value::String(value) => standing_value = value,
-                    _ => panic!("Unable to read key {:?} from json", RANK_KEY),
-                }
-                decks_rank.push(result_or_panic!(
-                    standing_value.parse::<u64>(),
-                    "Failed to parse value"
-                    )
-                );
-            }
-            let json_players: Vec<&Value> = Vec::from_iter(some_or_panic!(
-                    json_data[JSON_DECK_LISTS_KEY].as_array(),
-                    "Unable to read key {JSON_DECK_LISTS_KEY:?} from json"
-                )
-            );
-            println!("Request recived with: {:?} players", json_players.len());
-            if json_players.len() != 32 {
-                panic!("N of players not 32");
-            }
-            for player_index in 1..json_players.len() {
-                let cache_data: String = format!(
-                    "{}{}{}{}",
-                    json_players[player_index].to_string(),
-                    RANK_SEPARATOR,
-                    decks_rank[player_index],
-                    PLAYER_SEPARATOR,
-                );
-                if let Err(error) = cache_file.write(cache_data.as_bytes()) {
-                    panic!("Unable to write to cashe file: {}", error);
-                }
-                players.push(json_players[player_index].clone());
+    let (mut players, decks_rank) = match FORCE_DATA_COLLECTION_MODE {
+        ForceMode::None => {
+            match get_data_from_optimal_source(cache_rows) {
+                Ok(value) => value,
+                Err(error) => panic!("{}", error),
             }
         }
-    }
+        ForceMode::Cache => {
+            match get_data_from_cache(cache_rows) {
+                Ok(value) => value,
+                Err(error) => panic!("{}", error),
+            }
+        }
+        ForceMode::Requests => {
+            match get_data_from_requests() {
+                Ok(value) => value,
+                Err(error) => panic!("{}", error),
+            }
+        }
+    };
     println!("Html players are: {:?}", players.len());
     players.push(player_to_evaluate);
     let mut data_matrix: Vec<Vec<bool>> = Vec::new();
@@ -508,50 +588,45 @@ fn main() {
     }
     let mut card_average_cost_data: Vec<f32> = Vec::new();
     for player_index in 0..players.len() {
-        let player_data_json: &Value = some_or_panic!(
-            players[player_index].get("main_deck"),
-            "Unable to find main_deck field in json"
-        );
+        let player_data_json: &Value = match players[player_index].get("main_deck") {
+            Some(value) => value,
+            None => {
+                panic!("{}", "Unable to find main_deck field in json");
+            }
+        };
         let deck: &Vec<Value>;
         let option_deck: Option<&Vec<Value>> = player_data_json.as_array();
         print_formatted_log_string(format!("Player's deck: {:?}", option_deck));
-        deck = some_or_panic!(option_deck, "Unable to convert deck to Vec: {player_data_json:?}");
-        let mut player_colors_data: Vec<bool> = Vec::new();
+        deck = match option_deck {
+            Some(value) => value,
+            None => {
+                panic!("{}", "Unable to convert deck to Vec: {player_data_json:?}");
+            }
+        };
+        let mut binary_deck_colors: Vec<bool> = Vec::new();
         for _ in 0..colors_array.len() {
-            player_colors_data.push(false);
+            binary_deck_colors.push(false);
         }
-        let mut player_card_type_count_data: Vec<u8> = Vec::new();
+        let mut deck_card_type_count: Vec<u8> = Vec::new();
         for _ in 0..cards_type_array.len() {
-            player_card_type_count_data.push(0);
+            deck_card_type_count.push(0);
         }
         let mut cards_cost: Vec<usize> = Vec::new();
         for card in deck {
-            let card_attributes: &Value;
-            let option_card_attributes: Option<&Value> = card.get("card_attributes");
-            print_formatted_log_string(format!("Card attributes: {:?}", option_card_attributes));
-            card_attributes = some_or_panic!(
-                option_card_attributes,
-                "Unable to find card_attributes field in json"
+            let card_attributes: Option<&Value> = card.get("card_attributes");
+            print_formatted_log_string(
+                format!("Card attributes: {:?}", card_attributes)
             );
-            let option_colors_vector: Option<&Vec<Value>> = card_attributes["colors"].as_array();
-            print_formatted_log_string(format!("Colors in array: {:?}", option_colors_vector));
-            let mut colors_vector: &Vec<Value> = &Vec::new();
-            match option_colors_vector {
-                Some(value) => colors_vector = value,
-                None => {
-                    println!("!WARNING A card without the color field has been found, data about this card will be incomplete");
-                }
-            }
-            for color_index in 0..colors_array.len() {
-                for card_color in colors_vector {
-                    let card_color_string: String = result_or_panic!(
-                        serde_json::to_string(card_color),
-                        "Unable to convert color to String"
-                    );
-                    if card_color_string == colors_array[color_index] {
-                        player_colors_data[color_index] = true;
-                    }
-                }
+            let card_attributes: &Value = match card_attributes {
+                Some(value) => value,
+                None => panic!("{}", "Unable to find card_attributes field in json"),
+            };
+            let binary_card_colors = match get_binary_card_colors(card_attributes, &colors_array) {
+                Ok(value) => value,
+                Err(error) => panic!("{}", error),
+            };
+            for color_index in 0..binary_card_colors.len() {
+                binary_deck_colors[color_index] = binary_card_colors[color_index] | binary_deck_colors[color_index];
             }
             let card_quantity_string: &str;
             match &card["qty"] {
@@ -561,51 +636,30 @@ fn main() {
             let result_card_quantity: Result<u8, ParseIntError> =
                 card_quantity_string.parse::<u8>();
             print_formatted_log_string(
-                format!(
-                    "Result card quantity: {:?}",
-                    result_card_quantity,
-                )
+                format!("Result card quantity: {:?}", result_card_quantity)
             );
             let optional_card_type: Option<&str>;
             match &card_attributes["card_type"] {
                 Value::String(value) => optional_card_type = Some(value),
                 _ => optional_card_type = None,
             }
-            let card_quantity: u8 = result_or_panic!(
-                card_quantity_string.parse::<u8>(),
-                "Unable to parse card_quantity_string to u8"
-            );
-            if let Some(card_type_value) = optional_card_type {
-                for card_type_index in 0..cards_type_array.len() {
-                    if card_type_value == cards_type_array[card_type_index] {
-                        player_card_type_count_data[card_type_index] += card_quantity;
-                    }
-                }
+            let card_quantity: u8 = match card_quantity_string.parse::<u8>() {
+                Ok(value) => value,
+                Err(error) => panic!("{}: {:?}", "Unable to parse card_quantity_string to u8", error),
+            };
+            let card_type_quantities: Vec<u8> = get_card_types_quantities_array(optional_card_type, &cards_type_array, &card_quantity);
+            for card_type_index in 0..card_type_quantities.len() {
+                deck_card_type_count[card_type_index] += card_type_quantities[card_type_index];
             }
-            let value_card_cost: &Value = &card_attributes["cost"];
-            print_formatted_log_string(format!("Cost from card attribute: {:?}", value_card_cost));
-            let option_card_cost_string: Option<&str>;
-            match value_card_cost {
-                Value::String(value) => option_card_cost_string = Some(value),
-                _ => option_card_cost_string = None,
-            }
-            if let Some(card_cost_string) = option_card_cost_string {
-                let result_card_cost: Result<usize, ParseIntError> = card_cost_string.parse::<usize>();
-                print_formatted_log_string(format!("Parsed result card cost: {:?}", result_card_cost));
-                let card_cost: usize = result_or_panic!(
-                    result_card_cost,
-                    "Unable to parse card_cost_string to u8"
-                );
-                for _ in 0..card_quantity {
-                    cards_cost.push(card_cost);
-                }
+            if let Err(error) = push_card_costs(&card_attributes, &card_quantity, &mut cards_cost) {
+                panic!("{}", error);
             }
         }
         for feature_index in 0..colors_array.len() {
-            color_data_matrix[feature_index].push(player_colors_data[feature_index]);
+            color_data_matrix[feature_index].push(binary_deck_colors[feature_index]);
         }
-        for feature_index in 0..player_card_type_count_data.len() {
-            card_type_matrix[feature_index].push(player_card_type_count_data[feature_index]);
+        for feature_index in 0..deck_card_type_count.len() {
+            card_type_matrix[feature_index].push(deck_card_type_count[feature_index]);
         }
         let cards_cost_sum: f32 = cards_cost.iter().sum::<usize>() as f32;
         card_average_cost_data.push(cards_cost_sum / (cards_cost.len() as f32));
@@ -616,14 +670,7 @@ fn main() {
     for card_type_index in 0..card_type_matrix.len() {
         let mut tmp_vector: Vec<u8> = Vec::new();
         for target_value in &card_type_matrix[card_type_index] {
-            let mut contains_value: bool = false;
-            for unique_value in &tmp_vector {
-                if target_value == unique_value {
-                    contains_value = true;
-                    break;
-                }
-            }
-            if !contains_value {
+            if !is_value_in_vector(target_value, &tmp_vector) {
                 tmp_vector.push(*target_value);
             }
         }
@@ -647,10 +694,9 @@ fn main() {
         for unique_value_index in 0..unique_card_type_average_matrix[card_type_index].len() {
             let mut tmp_vector: Vec<bool> = Vec::new();
             for player_index in 0..card_type_matrix[card_type_index].len() {
-                tmp_vector.push(
-                    (card_type_matrix[card_type_index][player_index] as f32) <
-                    unique_card_type_average_matrix[card_type_index][unique_value_index]
-                );
+                let card_quantity: f32 = card_type_matrix[card_type_index][player_index] as f32;
+                let card_quantity_mean: f32 = unique_card_type_average_matrix[card_type_index][unique_value_index];
+                tmp_vector.push(card_quantity < card_quantity_mean);
             }
             card_type_data_matrix.push(tmp_vector);
         }
