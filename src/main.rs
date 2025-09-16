@@ -310,7 +310,6 @@ fn get_data_from_requests() -> Result<(Vec<Value>, Vec<u64>), String> {
         "04-0412763152",
         "04-0512763169",
         "04-0612763187",
-        /*
         "04-1112765765",
         "04-1212765782",
         "04-1812769888",
@@ -344,7 +343,6 @@ fn get_data_from_requests() -> Result<(Vec<Value>, Vec<u64>), String> {
         "06-2112798171",
         "06-2212798189",
         "06-2712799984",
-        */
     ]);
     for url_query in &url_queries {
         urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
