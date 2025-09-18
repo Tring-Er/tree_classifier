@@ -467,7 +467,10 @@ fn get_binary_card_colors(card_attributes: &Value, colors_array: &[String; 6]) -
     let card_colors: &Vec<Value> = match card_colors {
         Some(value) => value,
         None => {
-            println!("!WARNING A card without the color field has been found, data about this card will be incomplete");
+            println!(
+                "!WARNING A card without the color field has been found, data about this card will be incomplete: {:?}",
+                card_colors
+            );
             return Ok(binary_card_colors);
         }
     };
@@ -491,10 +494,15 @@ fn get_card_types_quantities_array(card_type: Option<&str>, cards_type_array: &[
         card_type_quantities.push(0);
     }
     if let Some(card_type) = card_type {
+        let mut is_type_registered: bool = false;
         for card_type_index in 0..cards_type_array.len() {
             if card_type == cards_type_array[card_type_index] {
+                is_type_registered = true;
                 card_type_quantities[card_type_index] += *card_quantity;
             }
+        }
+        if !is_type_registered {
+            println!("!WARNING A type not registered has been found!!!");
         }
     }
     return card_type_quantities;
@@ -549,6 +557,17 @@ fn get_cache_rows() -> Result<Vec<String>, String> {
     return Ok(cache_rows);
 }
 
+fn get_card_type(card_attributes: &Value) -> Option<&str> {
+    if let Value::String(card_type) = &card_attributes["card_type"] {
+        return Some(card_type);
+    }
+    println!(
+        "!WARNING A card without the type field has been found, data about this card will be incomplete: {:?}",
+        &card_attributes["card_type"]
+    );
+    return None;
+}
+
 fn main() -> Result<(), String> {
     let player_to_evaluate_string: String = match file_system::read_to_string("deck_template") {
         Ok(value) => value,
@@ -565,6 +584,9 @@ fn main() -> Result<(), String> {
                 Ok(value) => value,
                 Err(_) => panic!("The program has no permisions to open the current folder"),
             };
+            if !does_cache_file_exists {
+                panic!("Cache file do not exists");
+            }
             let cache_rows: Vec<String> = get_cache_rows()?;
             get_data_from_vec(cache_rows)?
         }
@@ -641,11 +663,7 @@ fn main() -> Result<(), String> {
             print_formatted_log_string(
                 format!("Result card quantity: {:?}", result_card_quantity)
             );
-            let optional_card_type: Option<&str>;
-            match &card_attributes["card_type"] {
-                Value::String(value) => optional_card_type = Some(value),
-                _ => optional_card_type = None,
-            }
+            let optional_card_type: Option<&str> = get_card_type(&card_attributes);
             let card_quantity: u8 = match card_quantity_string.parse::<u8>() {
                 Ok(value) => value,
                 Err(error) => panic!("{}: {:?}", "Unable to parse card_quantity_string to u8", error),
