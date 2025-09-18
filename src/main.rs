@@ -285,9 +285,6 @@ fn get_data_from_requests() -> Result<(Vec<Value>, Vec<u64>), String> {
     let mut players: Vec<Value> = Vec::new();
     let mut decks_rank: Vec<u64> = Vec::new();
     println!("Fetching from the web");
-    if let Err(error) = file_system::remove_file(CACHE_PATH) {
-        return Err(format!("Unable to delete cache file: {:?}", error));
-    }
     let mut cache_file: file_system::File = match file_system::File::create(CACHE_PATH) {
         Ok(value) => value,
         Err(error) => {
@@ -396,7 +393,7 @@ fn get_data_from_requests() -> Result<(Vec<Value>, Vec<u64>), String> {
                 PLAYER_SEPARATOR,
             );
             if let Err(error) = cache_file.write(cache_data.as_bytes()) {
-                return Err(format!("Unable to write to cashe file: {}", error));
+                return Err(format!("Unable to write to cache file: {}", error));
             }
             players.push(json_players[player_index].clone());
         }
@@ -404,7 +401,7 @@ fn get_data_from_requests() -> Result<(Vec<Value>, Vec<u64>), String> {
     return Ok((players, decks_rank));
 }
 
-fn get_data_from_cache(cache_rows: Vec<&str>) -> Result<(Vec<Value>, Vec<u64>), String> {
+fn get_data_from_vec(cache_rows: Vec<String>) -> Result<(Vec<Value>, Vec<u64>), String> {
     println!("Using cache!");
     let mut players: Vec<Value> = Vec::new();
     let mut decks_rank: Vec<u64> = Vec::new();
@@ -426,7 +423,26 @@ fn get_data_from_cache(cache_rows: Vec<&str>) -> Result<(Vec<Value>, Vec<u64>), 
     return Ok((players, decks_rank));
 }
 
-fn get_data_from_optimal_source(cache_rows: Vec<&str>) -> Result<(Vec<Value>, Vec<u64>), String> {
+fn get_data_from_optimal_source() -> Result<(Vec<Value>, Vec<u64>), String> {
+    let does_cache_file_exists: bool = match file_system::exists(CACHE_PATH) {
+        Ok(value) => value,
+        Err(_) => return Err(
+            format!("The program has no permisions to open the current folder")
+        ),
+    };
+    if !does_cache_file_exists {
+        return get_data_from_requests();
+    }
+    let cache_rows: Vec<String> = match get_cache_rows() {
+        Ok(value) => value,
+        Err(error) => return Err(error),
+    };
+    let last_cache: u64 = match str::parse::<u64>(&cache_rows[0]) {
+        Ok(value) => value,
+        Err(error) => return Err(
+            format!("{}: {:?}", "Unable to parse last cache eta to u64", error)
+        ),
+    };
     let today: SystemTime = SystemTime::now();
     let today: Duration = match today.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(value) => value,
@@ -435,17 +451,11 @@ fn get_data_from_optimal_source(cache_rows: Vec<&str>) -> Result<(Vec<Value>, Ve
         ),
     };
     let today: u64 = today.as_secs();
-    let last_cache: u64 = match str::parse::<u64>(cache_rows[0]) {
-        Ok(value) => value,
-        Err(error) => return Err(
-            format!("{}: {:?}", "Unable to parse last cache eta to u64", error)
-        ),
-    };
     let one_week: Duration = Duration::from_secs(1 * 7 * 24 * 60 * 60);
     let one_week: u64 = one_week.as_secs();
     let is_cache_younger_than_a_week: bool = today - last_cache < one_week;
     if is_cache_younger_than_a_week {
-        return get_data_from_cache(cache_rows);
+        return get_data_from_vec(cache_rows);
     }
     return get_data_from_requests();
 }
@@ -521,6 +531,24 @@ fn is_value_in_vector<Type: std::cmp::PartialEq>(target: &Type, vector: &Vec<Typ
     return false;
 }
 
+fn get_cache_rows() -> Result<Vec<String>, String> {
+    let cache_rows: String = match file_system::read_to_string(CACHE_PATH) {
+        Ok(value) => value,
+        Err(error) => return Err(
+            format!("{}: {:?}", "Unable to read cache file", error)
+        ),
+    };
+    let cache_rows: Vec<&str> = Vec::from_iter(
+        cache_rows.split(LAST_CACHE_SEPARATOR)
+    );
+    let mut tmp: Vec<String> = Vec::new();
+    for cache_row in cache_rows {
+        tmp.push(String::from(cache_row));
+    }
+    let cache_rows: Vec<String> = tmp;
+    return Ok(cache_rows);
+}
+
 fn main() {
     let player_to_evaluate_string: String = match file_system::read_to_string("deck_template") {
         Ok(value) => value,
@@ -534,25 +562,23 @@ fn main() {
             panic!("{}: {:?}", "Unable to parse string to value for player_to_evaluate", error);
         }
     };
-    match file_system::exists(CACHE_PATH) {
-        Ok(false) => panic!("Cache file does not exists"),
-        Err(_) => panic!("The program has no permisions to open the  cache file"),
-        _ => ()
-    }
-    let cache_rows: String = match file_system::read_to_string(CACHE_PATH) {
-        Ok(value) => value,
-        Err(error) => panic!("{}: {:?}", "Unable to read cache file", error),
-    };
-    let cache_rows: Vec<&str> = Vec::from_iter(cache_rows.split(LAST_CACHE_SEPARATOR));
     let (mut players, decks_rank) = match FORCE_DATA_COLLECTION_MODE {
         ForceMode::None => {
-            match get_data_from_optimal_source(cache_rows) {
+            match get_data_from_optimal_source() {
                 Ok(value) => value,
                 Err(error) => panic!("{}", error),
             }
         }
         ForceMode::Cache => {
-            match get_data_from_cache(cache_rows) {
+            let does_cache_file_exists: bool = match file_system::exists(CACHE_PATH) {
+                Ok(value) => value,
+                Err(_) => panic!("The program has no permisions to open the current folder"),
+            };
+            let cache_rows: Vec<String> = match get_cache_rows() {
+                Ok(value) => value,
+                Err(error) => panic!("{}", error),
+            };
+            match get_data_from_vec(cache_rows) {
                 Ok(value) => value,
                 Err(error) => panic!("{}", error),
             }
