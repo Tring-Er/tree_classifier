@@ -549,45 +549,27 @@ fn get_cache_rows() -> Result<Vec<String>, String> {
     return Ok(cache_rows);
 }
 
-fn main() {
+fn main() -> Result<(), String> {
     let player_to_evaluate_string: String = match file_system::read_to_string("deck_template") {
         Ok(value) => value,
-        Err(error) => {
-            panic!("{}: {:?}", "Unable  to find or open deck_template file", error);
-        }
+        Err(error) => panic!("{}: {:?}", "Unable  to find or open deck_template file", error),
     };
     let player_to_evaluate: Value = match serde_json::from_str::<Value>(&player_to_evaluate_string) {
         Ok(value) => value,
-        Err(error) => {
-            panic!("{}: {:?}", "Unable to parse string to value for player_to_evaluate", error);
-        }
+        Err(error) => panic!("{}: {:?}", "Unable to parse string to value for player_to_evaluate", error),
     };
     let (mut players, decks_rank) = match FORCE_DATA_COLLECTION_MODE {
-        ForceMode::None => {
-            match get_data_from_optimal_source() {
-                Ok(value) => value,
-                Err(error) => panic!("{}", error),
-            }
-        }
+        ForceMode::None => get_data_from_optimal_source()?,
         ForceMode::Cache => {
             let does_cache_file_exists: bool = match file_system::exists(CACHE_PATH) {
                 Ok(value) => value,
                 Err(_) => panic!("The program has no permisions to open the current folder"),
             };
-            let cache_rows: Vec<String> = match get_cache_rows() {
-                Ok(value) => value,
-                Err(error) => panic!("{}", error),
-            };
-            match get_data_from_vec(cache_rows) {
-                Ok(value) => value,
-                Err(error) => panic!("{}", error),
-            }
+            let cache_rows: Vec<String> = get_cache_rows()?;
+            get_data_from_vec(cache_rows)?
         }
         ForceMode::Requests => {
-            match get_data_from_requests() {
-                Ok(value) => value,
-                Err(error) => panic!("{}", error),
-            }
+            get_data_from_requests()?
         }
     };
     println!("Html players are: {:?}", players.len());
@@ -645,10 +627,7 @@ fn main() {
                 Some(value) => value,
                 None => panic!("{}", "Unable to find card_attributes field in json"),
             };
-            let binary_card_colors = match get_binary_card_colors(card_attributes, &colors_array) {
-                Ok(value) => value,
-                Err(error) => panic!("{}", error),
-            };
+            let binary_card_colors = get_binary_card_colors(card_attributes, &colors_array)?;
             for color_index in 0..binary_card_colors.len() {
                 binary_deck_colors[color_index] = binary_card_colors[color_index] | binary_deck_colors[color_index];
             }
@@ -675,9 +654,7 @@ fn main() {
             for card_type_index in 0..card_type_quantities.len() {
                 deck_card_type_count[card_type_index] += card_type_quantities[card_type_index];
             }
-            if let Err(error) = push_card_costs(&card_attributes, &card_quantity, &mut cards_cost) {
-                panic!("{}", error);
-            }
+            let _ = push_card_costs(&card_attributes, &card_quantity, &mut cards_cost)?;
         }
         for feature_index in 0..colors_array.len() {
             color_data_matrix[feature_index].push(binary_deck_colors[feature_index]);
@@ -847,4 +824,5 @@ fn main() {
         }
     }
     println!("For Evaluation... True: {} False: {}", number_of_true, number_of_false);
+    return Ok(());
 }
