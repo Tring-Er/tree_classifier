@@ -218,7 +218,13 @@ fn generate_nodes(
     };
 }
 
-fn get_decks_json(url: &str, client: &Client) -> Result<String, String> {
+fn get_page_response_section(
+    url: &str,
+    client: &Client,
+    first_index_to_find: &str,
+    second_index_to_find: &str,
+    second_index_reduction: usize,
+) -> Result<String, String> {
     let mut error_message: String = String::new();
     let mut number_of_tries: usize = 0;
     while number_of_tries < MAX_TRIES {
@@ -260,23 +266,23 @@ fn get_decks_json(url: &str, client: &Client) -> Result<String, String> {
                 continue;
             }
         };
-        let first_index: usize = match page_html.find(FIRST_INDEX_STRING) {
+        let first_index: usize = match page_html.find(first_index_to_find) {
             Some(value) => value,
             None => {
-                error_message = format!("{:?}\nUnable to find json in html document", page_html); 
+                error_message = format!("{:?}\nUnable to find first index in document", page_html); 
                 println!("{}", error_message);
                 continue;
             }
         };
-        let second_index: usize = match page_html.find(r#"window.MTGO.decklists.type = "#) {
+        let second_index: usize = match page_html.find(second_index_to_find) {
             Some(value) => value,
             None => {
-                error_message = format!("{:?}\nUnable to find deck in html document", page_html); 
+                error_message = format!("{:?}\nUnable to find second index in document", page_html); 
                 println!("{}", error_message);
                 continue;
             }
         };
-        return Ok(page_html[first_index + FIRST_INDEX_STRING.len()..second_index - 6].to_string());
+        return Ok(page_html[first_index + first_index_to_find.len()..second_index - second_index_reduction].to_string());
     }
     return Err(error_message);
 }
@@ -288,69 +294,112 @@ fn get_data_from_requests() -> Result<(Vec<Value>, Vec<u64>), String> {
     let mut cache_file: file_system::File = match file_system::File::create(CACHE_PATH) {
         Ok(value) => value,
         Err(error) => {
-            return Err(format!("{}: {:?}", "Unable to create or open cache file", error));
+            return Err(
+                format!("{}: {:?}", "Unable to create or open cache file", error)
+            );
         }
     };
-    let today_duration: Duration = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+    let today: SystemTime = SystemTime::now();
+    let today: Duration = match today.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(value) => value,
-        Err(error) => {
-            return Err(format!("{}: {:?}", "Unable to convert current date to seconds", error));
-        }
+        Err(error) => return Err(
+            format!("{}: {:?}", "Unable to convert today time into seconds since unix epoch", error)
+        ),
     };
+    let today: u64 = today.as_secs();
     if let Err(error) = cache_file.write(
-        format!("{}{}", today_duration.as_secs(), LAST_CACHE_SEPARATOR).as_bytes()
+        format!("{}{}", today, LAST_CACHE_SEPARATOR).as_bytes()
     ) {
-        return Err(format!("Unable to write to cashe file: {}", error));
+        return Err(
+            format!("Unable to write to cashe file: {}", error)
+        );
     }
+    let mut month_urls: Vec<String> = Vec::new();
+
+
+
+    let one_year: u64 = 365 * 24 * 60 * 60;
+    let one_month: u64 = 365 / 12 * 24 * 60 * 60;
+    let current_month: u64 = (today % one_year) / one_month;
+    let current_year: u64 = today / one_year + 1970;
+    for months_back in 1..=3 {
+        let mut needed_year: u64 = current_year;
+        let mut needed_month: u64 = current_month;
+        for _ in 0..months_back {
+            if needed_month <= 1 {
+                needed_year -= 1;
+                needed_month = 12;
+            } else {
+                needed_month -= 1;
+            }
+        }
+        let url_month: String;
+        if needed_month < 10 {
+            url_month = format!("0{}", needed_month);
+        } else {
+            url_month = format!("{}", needed_month);
+        }
+        month_urls.push(
+            format!("https://{}/decklists/{}/{}", HOST, needed_year, url_month)
+        );
+    }
+
+
+
     let mut urls: Vec<String> = Vec::new();
-    let url_queries: Vec<&str> = Vec::from([
-        "04-0412763152",
-        "04-0512763169",
-        "04-0612763187",
-        "04-1112765765",
-        "04-1212765782",
-        "04-1812769888",
-        "04-1912769905",
-        "04-2012769922",
-        "04-2512772646",
-        "04-2612772667",
-        "04-2712772689",
-        "05-0212774478",
-        "05-0312774499",
-        "05-0412774521",
-        "05-0912777329",
-        "05-1012777346",
-        "05-1112777364",
-        "05-1612780132",
-        "05-1712780149",
-        "05-1812780167",
-        "05-2312782299",
-        "05-2412782313",
-        "05-2512782331",
-        "05-3012782641",
-        "05-3112782655",
-        "06-0112782673",
-        "06-0612792678",
-        "06-0712792692",
-        "06-0812792709",
-        "06-1312794581",
-        "06-1412794595",
-        "06-1512794613",
-        "06-2012798157",
-        "06-2112798171",
-        "06-2212798189",
-        "06-2712799984",
-    ]);
-    for url_query in &url_queries {
-        urls.push(format!("https://{}/decklist/pauper-challenge-32-2025-{}", HOST, url_query));
+
+
+    let client: Client = Client::new();
+    for month_url in month_urls {
+        println!("Fetching events from: {}", month_url);
+        let events: String = match get_page_response_section(
+            &month_url,
+            &client,
+            r#"<ul class="decklists-list">"#,
+            r#"<footer class="site-footer" id="footer">"#,
+            0,
+        ) {
+            Ok(value) => value,
+            Err(error) => return Err(
+                format!("{}\nUnable to find the decklists section", error)
+            ),
+        };
+        let tmp: Vec<&str> = Vec::from_iter(
+            events.split("<a href=\"")
+        );
+        let mut events: Vec<&str> = Vec::new();
+        for index in 1..tmp.len() {
+            events.push(
+                tmp[index]
+            );
+        }
+        for event in events {
+            let event_uri: &str = Vec::from_iter(
+                event.split("\"")
+            )[0];
+            if event_uri.contains("pauper-challenge-32") {
+                let url: String = format!("https://{}{}", HOST, event_uri);
+                urls.push(url);
+            }
+        }
     }
-    for url_index in 0..url_queries.len() {
+
+
+    println!("Starting the request for {} events", urls.len());
+    for url_index in 0..urls.len() {
         let url: &str = &urls[url_index];
         println!("Requesting url: {:?}", url);
-        let client: Client = Client::new();
-        let raw_decks_json: String = match get_decks_json(url, &client) {
+        let raw_decks_json: String = match get_page_response_section(
+            url,
+            &client,
+            FIRST_INDEX_STRING,
+            r#"window.MTGO.decklists.type = "#,
+            6,
+        ) {
             Ok(html_page) => html_page,
-            Err(error) => return Err(format!("{}", error)),
+            Err(error) => return Err(
+                format!("{}\nUnable to get the deck lists section", error)
+            ),
         };
         let json_data: Value = match serde_json::from_str::<Value>(&raw_decks_json) {
             Ok(value) => value,
